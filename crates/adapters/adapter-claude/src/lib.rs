@@ -1,5 +1,6 @@
 //! Claude Code adapter for ragentop.
 
+pub mod detector;
 pub mod parser;
 use ragentop_core::{
     AdapterCapabilities, AgentAdapter, AgentSession, AgentType, Command, HistoryDepth, Result,
@@ -35,7 +36,7 @@ impl AgentAdapter for ClaudeAdapter {
         self.config_dir.clone()
     }
     fn detect_sessions(&self) -> Result<Vec<AgentSession>> {
-        Ok(vec![])
+        detector::detect_sessions(&self.config_dir)
     }
     fn poll_metrics(&self, _: &SessionId) -> Result<SessionMetrics> {
         Ok(SessionMetrics::default())
