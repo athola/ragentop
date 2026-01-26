@@ -1,0 +1,11 @@
+[package]
+name = "ragentop-web"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+ragentop-core = { path = "../ragentop-core" }
+tokio.workspace = true
+
+[lints]
+workspace = true

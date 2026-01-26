@@ -1,0 +1,14 @@
+[package]
+name = "ragentop-tui"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+ragentop-core = { path = "../ragentop-core" }
+ratatui.workspace = true
+crossterm.workspace = true
+tokio.workspace = true
+anyhow.workspace = true
+
+[lints]
+workspace = true

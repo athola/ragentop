@@ -1,0 +1,22 @@
+[package]
+name = "ragentop-cli"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "ragentop"
+path = "src/main.rs"
+
+[dependencies]
+ragentop-core = { path = "../ragentop-core" }
+ragentop-daemon = { path = "../ragentop-daemon" }
+ragentop-tui = { path = "../ragentop-tui" }
+ragentop-web = { path = "../ragentop-web" }
+clap.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+anyhow.workspace = true
+
+[lints]
+workspace = true
