@@ -13,6 +13,11 @@ pub struct StateNode {
 impl StateNode {
     #[must_use]
     pub fn new(commands: Vec<Command>, parent: Option<super::Hash>) -> Self {
-        Self { commands, parent, timestamp: SystemTime::now(), metadata: None }
+        Self {
+            commands,
+            parent,
+            timestamp: SystemTime::now(),
+            metadata: None,
+        }
     }
 }

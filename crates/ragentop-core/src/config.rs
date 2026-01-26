@@ -23,7 +23,10 @@ pub struct DaemonConfig {
 impl Default for DaemonConfig {
     fn default() -> Self {
         Self {
-            socket_path: dirs::runtime_dir().map_or_else(|| PathBuf::from("/tmp/ragentop.sock"), |d| d.join("ragentop.sock")),
+            socket_path: dirs::runtime_dir().map_or_else(
+                || PathBuf::from("/tmp/ragentop.sock"),
+                |d| d.join("ragentop.sock"),
+            ),
             poll_interval_ms: 2000,
         }
     }
@@ -39,7 +42,11 @@ pub struct TuiConfig {
 
 impl Default for TuiConfig {
     fn default() -> Self {
-        Self { default_depth: 2, mouse_enabled: true, ascii_mode: false }
+        Self {
+            default_depth: 2,
+            mouse_enabled: true,
+            ascii_mode: false,
+        }
     }
 }
 
@@ -52,15 +59,24 @@ pub struct WebConfig {
 
 impl Default for WebConfig {
     fn default() -> Self {
-        Self { bind_address: "127.0.0.1".to_string(), port: 8080 }
+        Self {
+            bind_address: "127.0.0.1".to_string(),
+            port: 8080,
+        }
     }
 }
 
 impl Config {
+    /// Returns the default config directory path.
+    #[must_use]
     pub fn config_dir() -> Option<PathBuf> {
         ProjectDirs::from("com", "ragentop", "ragentop").map(|p| p.config_dir().to_path_buf())
     }
 
+    /// Loads config from the default path, or returns default if not found.
+    ///
+    /// # Errors
+    /// Returns an error if the config file exists but cannot be read or parsed.
     pub fn load() -> Result<Self> {
         if let Some(path) = Self::config_dir().map(|p| p.join("config.toml")) {
             if path.exists() {

@@ -18,27 +18,50 @@ pub struct DagStore {
 }
 
 impl DagStore {
+    /// Opens or creates a DAG store at the given path.
+    ///
+    /// # Errors
+    /// Returns an error if the database cannot be opened.
     pub fn open(path: &Path) -> Result<Self> {
         let db = sled::open(path.join("dag.sled")).map_err(|e| Error::Storage(e.to_string()))?;
         Ok(Self { db })
     }
 
+    /// Stores a node and returns its content-addressed hash.
+    ///
+    /// # Errors
+    /// Returns an error if serialization or database insertion fails.
     pub fn store(&self, node: &StateNode) -> Result<Hash> {
         let data = serde_json::to_vec(node)?;
         let hash = Hash::from_bytes(&data);
-        self.db.insert(hash.0.as_bytes(), data).map_err(|e| Error::Storage(e.to_string()))?;
+        self.db
+            .insert(hash.0.as_bytes(), data)
+            .map_err(|e| Error::Storage(e.to_string()))?;
         Ok(hash)
     }
 
+    /// Loads a node by its hash.
+    ///
+    /// # Errors
+    /// Returns an error if the database read or deserialization fails.
     pub fn load(&self, hash: &Hash) -> Result<Option<StateNode>> {
-        match self.db.get(hash.0.as_bytes()).map_err(|e| Error::Storage(e.to_string()))? {
+        match self
+            .db
+            .get(hash.0.as_bytes())
+            .map_err(|e| Error::Storage(e.to_string()))?
+        {
             Some(bytes) => Ok(Some(serde_json::from_slice(&bytes)?)),
             None => Ok(None),
         }
     }
 
+    /// Returns an iterator that walks the history chain from a node back to root.
+    #[must_use]
     pub fn walk_history(&self, from: &Hash) -> HistoryWalker<'_> {
-        HistoryWalker { store: self, current: Some(from.clone()) }
+        HistoryWalker {
+            store: self,
+            current: Some(from.clone()),
+        }
     }
 }
 
@@ -52,7 +75,7 @@ impl Iterator for HistoryWalker<'_> {
     fn next(&mut self) -> Option<Self::Item> {
         let hash = self.current.take()?;
         let node = self.store.load(&hash).ok()??;
-        self.current = node.parent.clone();
+        self.current.clone_from(&node.parent);
         Some(node)
     }
 }
