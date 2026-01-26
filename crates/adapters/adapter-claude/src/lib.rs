@@ -1,4 +1,6 @@
-//! claude adapter for ragentop.
+//! Claude Code adapter for ragentop.
+
+pub mod parser;
 use ragentop_core::{
     AdapterCapabilities, AgentAdapter, AgentSession, AgentType, Command, HistoryDepth, Result,
     SessionId, SessionMetrics,
