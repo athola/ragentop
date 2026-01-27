@@ -2,3 +2,5 @@ target/
 
 # Claude session state
 .claude/session-state.md
+
+docs/plans/

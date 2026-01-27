@@ -1,0 +1,109 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+env:
+  CARGO_TERM_COLOR: always
+
+permissions:
+  contents: write
+
+jobs:
+  # Run all quality checks before releasing
+  ci:
+    uses: ./.github/workflows/ci.yml
+
+  build:
+    name: Build (${{ matrix.target }})
+    needs: ci
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-latest
+          - target: x86_64-apple-darwin
+            os: macos-latest
+          - target: aarch64-apple-darwin
+            os: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+      - name: Install cross-compilation tools
+        if: matrix.target == 'aarch64-unknown-linux-gnu'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu
+          echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc" >> "$GITHUB_ENV"
+      - name: Build release binary
+        run: cargo build --release --target ${{ matrix.target }} --bin ragentop
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ragentop-${{ matrix.target }}
+          path: target/${{ matrix.target }}/release/ragentop
+
+  release:
+    name: Create GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Package binaries
+        run: |
+          mkdir -p release
+          for dir in artifacts/ragentop-*; do
+            target=$(basename "$dir" | sed 's/ragentop-//')
+            chmod +x "$dir/ragentop"
+            tar czf "release/ragentop-${target}.tar.gz" -C "$dir" ragentop
+          done
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release/*
+          generate_release_notes: true
+
+  publish:
+    name: Publish to crates.io
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Publish crates (dependency order)
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: |
+          # Core first (no internal deps)
+          cargo publish -p ragentop-core --allow-dirty
+          sleep 30
+
+          # Adapters (depend on core)
+          for adapter in adapter-claude adapter-codex adapter-gemini adapter-copilot adapter-qwen adapter-glm; do
+            cargo publish -p "$adapter" --allow-dirty
+            sleep 15
+          done
+
+          # Daemon (depends on core)
+          cargo publish -p ragentop-daemon --allow-dirty
+          sleep 15
+
+          # TUI and Web (depend on core)
+          cargo publish -p ragentop-tui --allow-dirty
+          sleep 15
+          cargo publish -p ragentop-web --allow-dirty
+          sleep 15
+
+          # CLI last (depends on everything)
+          cargo publish -p ragentop-cli --allow-dirty

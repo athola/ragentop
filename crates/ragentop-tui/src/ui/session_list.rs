@@ -24,7 +24,10 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
             };
 
             let line = Line::from(vec![
-                Span::styled(format!("{status_symbol} "), Style::default().fg(status_color)),
+                Span::styled(
+                    format!("{status_symbol} "),
+                    Style::default().fg(status_color),
+                ),
                 Span::styled(
                     format!("{:<8}", session.agent_type),
                     Style::default().fg(Theme::agent_color(session.agent_type)),

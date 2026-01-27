@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(git rev-parse --show-toplevel)"
+cd "$ROOT"
+
+step() {
+  printf '>> %s\n' "$*"
+}
+
+step "cargo fmt --all -- --check"
+cargo fmt --all -- --check
+
+step "cargo clippy --workspace --all-targets -- -D warnings -A clippy::missing_errors_doc -A clippy::must_use_candidate"
+cargo clippy --workspace --all-targets -- -D warnings -A clippy::missing_errors_doc -A clippy::must_use_candidate
+
+step "cargo test --workspace --quiet"
+cargo test --workspace --quiet
+
+step "pre-commit checks completed"

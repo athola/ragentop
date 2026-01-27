@@ -3,9 +3,22 @@ name = "ragentop-web"
 version.workspace = true
 edition.workspace = true
 
+[[bin]]
+name = "ragentop-web"
+path = "src/main.rs"
+
 [dependencies]
 ragentop-core = { path = "../ragentop-core" }
 tokio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+leptos.workspace = true
+leptos_axum = "0.7"
+leptos_meta = "0.7"
+axum = "0.7"
+tower = "0.5"
+tower-http = { version = "0.6", features = ["fs"] }
 
 [lints]
 workspace = true

@@ -1,4 +1,6 @@
-//! glm adapter for ragentop.
+//! GLM adapter for ragentop (Claude via `ANTHROPIC_BASE_URL` proxy).
+
+pub mod detector;
 use ragentop_core::{
     AdapterCapabilities, AgentAdapter, AgentSession, AgentType, Command, HistoryDepth, Result,
     SessionId, SessionMetrics,
@@ -10,6 +12,7 @@ pub struct GlmAdapter {
 }
 
 impl GlmAdapter {
+    #[must_use]
     pub fn new() -> Self {
         Self {
             config_dir: dirs::home_dir().map(|h| h.join(".glm")).unwrap_or_default(),
@@ -31,7 +34,7 @@ impl AgentAdapter for GlmAdapter {
         self.config_dir.clone()
     }
     fn detect_sessions(&self) -> Result<Vec<AgentSession>> {
-        Ok(vec![])
+        detector::detect_sessions(&self.config_dir)
     }
     fn poll_metrics(&self, _: &SessionId) -> Result<SessionMetrics> {
         Ok(SessionMetrics::default())

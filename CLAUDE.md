@@ -54,19 +54,19 @@ Before merging, verify:
 ## Development Commands
 
 ```bash
-# Check all crates
+# Using Makefile (preferred)
+make check           # Check all crates
+make test            # Run all tests
+make lint            # Run clippy
+make pre-commit      # Format + lint + test
+
+# Direct cargo commands
 cargo check --workspace
-
-# Run all tests
 cargo test --workspace
-
-# Format and lint
 cargo fmt --all && cargo clippy --workspace -- -D warnings
-
-# Run specific crate tests
-cargo test -p ragentop-core
-cargo test -p adapter-claude
 ```
+
+See [docs/MAKEFILE.md](docs/MAKEFILE.md) for full target reference.
 
 ## Adding New Adapters
 
@@ -87,3 +87,5 @@ cargo test -p adapter-claude
 - `docs/adr/001-*.md` - Architecture decision record
 - `docs/plans/2025-01-25-ragentop-mvp-design.md` - Full specification
 - `docs/plans/2025-01-25-ragentop-implementation-plan.md` - TDD task breakdown
+- `docs/plans/2026-01-26-war-room-mvp-decisions.md` - MVP scope decisions
+- `docs/MAKEFILE.md` - Build system reference

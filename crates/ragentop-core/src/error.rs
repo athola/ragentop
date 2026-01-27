@@ -16,6 +16,8 @@ pub enum Error {
     Storage(String),
     #[error("Adapter error: {0}")]
     Adapter(String),
+    #[error("Validation error: {0}")]
+    Validation(String),
     #[error("Session not found: {0}")]
     SessionNotFound(String),
     #[error("Config error: {0}")]

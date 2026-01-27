@@ -13,6 +13,7 @@ pub struct ClaudeAdapter {
 }
 
 impl ClaudeAdapter {
+    #[must_use]
     pub fn new() -> Self {
         Self {
             config_dir: dirs::home_dir()

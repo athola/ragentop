@@ -67,3 +67,62 @@ fn test_cycle_depth() {
     state.cycle_depth();
     assert_eq!(state.history_depth, HistoryDepth::WithResponses);
 }
+
+#[test]
+fn test_navigate_empty_state() {
+    let mut state = AppState::new();
+    // Should not panic on empty state
+    state.navigate_up();
+    state.navigate_down();
+    assert_eq!(state.selected_index, 0);
+}
+
+#[test]
+fn test_update_sessions_adjusts_index() {
+    use ragentop_core::{AgentSession, AgentType, SessionId, SessionStatus};
+
+    let mut state = AppState::new();
+    state.selected_index = 5;
+    state.session_count = 10;
+
+    // Reduce to 3 sessions - index should adjust
+    let sessions: Vec<AgentSession> = (0..3)
+        .map(|i| AgentSession {
+            id: SessionId::new_unchecked(format!("s{i}")),
+            agent_type: AgentType::Claude,
+            model: None,
+            session_name: None,
+            working_dir: None,
+            pane_id: None,
+            pid: None,
+            started_at: None,
+            status: SessionStatus::Active,
+        })
+        .collect();
+
+    state.update_sessions(sessions);
+    assert_eq!(state.session_count, 3);
+    assert_eq!(state.selected_index, 2); // Adjusted to last valid index
+}
+
+#[test]
+fn test_selected_session_returns_none_when_empty() {
+    let state = AppState::new();
+    assert!(state.selected_session().is_none());
+}
+
+#[test]
+fn test_quit_sets_flag() {
+    let mut state = AppState::new();
+    assert!(!state.should_quit);
+    state.quit();
+    assert!(state.should_quit);
+}
+
+#[test]
+fn test_default_matches_new() {
+    let new_state = AppState::new();
+    let default_state = AppState::default();
+    assert_eq!(new_state.selected_index, default_state.selected_index);
+    assert_eq!(new_state.active_panel, default_state.active_panel);
+}

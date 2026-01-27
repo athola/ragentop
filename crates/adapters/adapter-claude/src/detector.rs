@@ -1,18 +1,75 @@
 //! Session detection for Claude Code.
 
 use ragentop_core::{AgentSession, AgentType, Result, SessionId, SessionStatus};
-use serde::Deserialize;
 use std::path::Path;
+use std::time::{Duration, SystemTime};
 
-#[derive(Deserialize)]
-struct SessionFile {
-    id: Option<String>,
-    model: Option<String>,
-    #[serde(rename = "sessionName")]
-    session_name: Option<String>,
+/// Sessions modified within this duration are considered "Active".
+/// 5 minutes accounts for Claude's batched writes and user think time.
+const ACTIVE_THRESHOLD: Duration = Duration::from_secs(300);
+
+/// Get PIDs of running claude processes and their working directories
+fn get_active_claude_pids() -> std::collections::HashSet<String> {
+    let mut active_dirs = std::collections::HashSet::new();
+    // Find claude processes and their working directories
+    if let Ok(output) = std::process::Command::new("pgrep")
+        .args(["-a", "claude"])
+        .output()
+    {
+        if output.status.success() {
+            // Claude is running - mark as having active sessions
+            for line in String::from_utf8_lossy(&output.stdout).lines() {
+                if let Some(pid) = line.split_whitespace().next() {
+                    // Get cwd for this PID
+                    if let Ok(cwd) = std::fs::read_link(format!("/proc/{pid}/cwd")) {
+                        active_dirs.insert(cwd.to_string_lossy().to_string());
+                    }
+                }
+            }
+        }
+    }
+    active_dirs
+}
+
+/// Converts a Claude project directory name back to a path.
+/// Rules: -- = . (dot), finds longest existing parent path
+fn project_dir_to_path(name: &str) -> String {
+    // -- means dot (hidden dirs)
+    let name = name.replace("--", "/.");
+    let base = name.replacen('-', "/", 1);
+
+    if let Some(rest) = base.strip_prefix("/home-") {
+        if let Some(idx) = rest.find('-') {
+            let user = &rest[..idx];
+            let project = &rest[idx + 1..];
+            let home = format!("/home/{user}");
+
+            // Split project into parts, find longest existing prefix
+            let parts: Vec<&str> = project.split('-').collect();
+            for i in (1..=parts.len()).rev() {
+                let prefix = parts[..i].join("-");
+                let candidate = format!("{home}/{prefix}");
+                if std::path::Path::new(&candidate).exists() {
+                    // Found existing dir - remaining parts are subdirs
+                    let suffix = parts[i..].join("/");
+                    return if suffix.is_empty() {
+                        candidate
+                    } else {
+                        format!("{candidate}/{suffix}")
+                    };
+                }
+            }
+            return format!("{}/{}", home, project.replace('-', "/"));
+        }
+    }
+    base.replace('-', "/")
 }
 
 /// Detects Claude sessions in the given config directory.
+///
+/// Claude Code stores sessions as `.jsonl` files in project directories.
+/// Each project dir is named like `-home-alext-myproject` (path with slashes as dashes).
+/// Session files are UUIDs like `08183e2d-3def-465c-a576-dc79a868c1f2.jsonl`.
 ///
 /// # Errors
 /// Returns an error if directory reading fails.
@@ -22,31 +79,56 @@ pub fn detect_sessions(config_dir: &Path) -> Result<Vec<AgentSession>> {
         return Ok(vec![]);
     }
 
+    // Get directories with active Claude processes
+    let active_dirs = get_active_claude_pids();
+
     let mut sessions = Vec::new();
-    for entry in std::fs::read_dir(&projects_dir)? {
-        let entry = entry?;
-        let project_path = entry.path();
+    for project_entry in std::fs::read_dir(&projects_dir)? {
+        let project_entry = project_entry?;
+        let project_path = project_entry.path();
         if !project_path.is_dir() {
             continue;
         }
 
-        let session_file = project_path.join("session.json");
-        if session_file.exists() {
-            if let Ok(contents) = std::fs::read_to_string(&session_file) {
-                if let Ok(data) = serde_json::from_str::<SessionFile>(&contents) {
-                    let id = data.id.unwrap_or_else(|| {
-                        entry.file_name().to_string_lossy().to_string()
-                    });
+        let project_name = project_entry.file_name().to_string_lossy().to_string();
+        let working_dir = project_dir_to_path(&project_name);
+
+        // Find all .jsonl session files in this project
+        if let Ok(entries) = std::fs::read_dir(&project_path) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.extension().is_some_and(|e| e == "jsonl") {
+                    let session_id = path
+                        .file_stem()
+                        .map(|s| s.to_string_lossy().to_string())
+                        .unwrap_or_default();
+
+                    // Use file metadata for timestamps and activity detection
+                    let metadata = path.metadata().ok();
+                    let started_at = metadata.as_ref().and_then(|m| m.modified().ok());
+
+                    // Active if: running process OR modified within threshold
+                    let is_process_active = active_dirs.contains(&working_dir);
+                    let is_recently_modified = started_at
+                        .and_then(|t| SystemTime::now().duration_since(t).ok())
+                        .is_some_and(|age| age < ACTIVE_THRESHOLD);
+
+                    let status = if is_process_active || is_recently_modified {
+                        SessionStatus::Active
+                    } else {
+                        SessionStatus::Idle
+                    };
+
                     sessions.push(AgentSession {
-                        id: SessionId::new(id),
+                        id: SessionId::new_unchecked(session_id),
                         agent_type: AgentType::Claude,
-                        model: data.model,
-                        session_name: data.session_name,
-                        working_dir: Some(project_path),
+                        model: None, // Would need to parse jsonl to get this
+                        session_name: Some(project_name.clone()),
+                        working_dir: Some(working_dir.clone().into()),
                         pane_id: None,
                         pid: None,
-                        started_at: None,
-                        status: SessionStatus::Idle,
+                        started_at,
+                        status,
                     });
                 }
             }
@@ -62,19 +144,37 @@ mod tests {
     use tempfile::tempdir;
 
     #[test]
-    fn test_detect_sessions_finds_projects() {
+    fn test_detect_sessions_finds_jsonl_files() {
         let dir = tempdir().unwrap();
         let claude_dir = dir.path().join(".claude");
-        let project_dir = claude_dir.join("projects").join("test-project");
+        let project_dir = claude_dir.join("projects").join("-home-user-myproject");
         fs::create_dir_all(&project_dir).unwrap();
         fs::write(
-            project_dir.join("session.json"),
-            r#"{"id": "session-123", "model": "claude-sonnet-4-20250514"}"#,
-        ).unwrap();
+            project_dir.join("abc123-def456.jsonl"),
+            r#"{"type":"message"}"#,
+        )
+        .unwrap();
 
         let sessions = detect_sessions(&claude_dir).unwrap();
         assert_eq!(sessions.len(), 1);
-        assert_eq!(sessions[0].id.0, "session-123");
+        assert_eq!(sessions[0].id.as_str(), "abc123-def456");
+        assert_eq!(
+            sessions[0].session_name.as_deref(),
+            Some("-home-user-myproject")
+        );
+    }
+
+    #[test]
+    fn test_detect_sessions_multiple_sessions_per_project() {
+        let dir = tempdir().unwrap();
+        let claude_dir = dir.path().join(".claude");
+        let project_dir = claude_dir.join("projects").join("-home-user-project");
+        fs::create_dir_all(&project_dir).unwrap();
+        fs::write(project_dir.join("session-1.jsonl"), "{}").unwrap();
+        fs::write(project_dir.join("session-2.jsonl"), "{}").unwrap();
+
+        let sessions = detect_sessions(&claude_dir).unwrap();
+        assert_eq!(sessions.len(), 2);
     }
 
     #[test]
@@ -84,6 +184,52 @@ mod tests {
         fs::create_dir_all(&claude_dir).unwrap();
 
         let sessions = detect_sessions(&claude_dir).unwrap();
+        assert!(sessions.is_empty());
+    }
+
+    #[test]
+    fn test_project_dir_to_path() {
+        assert_eq!(
+            project_dir_to_path("-home-user-project"),
+            "/home/user/project"
+        );
+        assert_eq!(
+            project_dir_to_path("-home-alext-ragentop"),
+            "/home/alext/ragentop"
+        );
+    }
+
+    #[test]
+    fn test_detect_sessions_ignores_non_jsonl_files() {
+        let dir = tempdir().unwrap();
+        let claude_dir = dir.path().join(".claude");
+        let project_dir = claude_dir.join("projects").join("-home-user-project");
+        fs::create_dir_all(&project_dir).unwrap();
+        fs::write(project_dir.join("readme.txt"), "not a session").unwrap();
+        fs::write(project_dir.join("config.json"), "{}").unwrap();
+
+        let sessions = detect_sessions(&claude_dir).unwrap();
+        assert!(sessions.is_empty());
+    }
+
+    #[test]
+    fn test_detect_sessions_handles_empty_jsonl() {
+        let dir = tempdir().unwrap();
+        let claude_dir = dir.path().join(".claude");
+        let project_dir = claude_dir.join("projects").join("-home-user-project");
+        fs::create_dir_all(&project_dir).unwrap();
+        fs::write(project_dir.join("empty-session.jsonl"), "").unwrap();
+
+        let sessions = detect_sessions(&claude_dir).unwrap();
+        assert_eq!(sessions.len(), 1);
+        assert_eq!(sessions[0].id.as_str(), "empty-session");
+    }
+
+    #[test]
+    fn test_detect_sessions_nonexistent_dir_returns_empty() {
+        let dir = tempdir().unwrap();
+        let nonexistent = dir.path().join("does-not-exist");
+        let sessions = detect_sessions(&nonexistent).unwrap();
         assert!(sessions.is_empty());
     }
 }

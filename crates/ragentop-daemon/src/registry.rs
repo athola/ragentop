@@ -12,6 +12,11 @@ impl AdapterRegistry {
     pub fn register(&mut self, adapter: Arc<dyn AgentAdapter>) {
         self.adapters.push(adapter);
     }
+
+    #[must_use]
+    pub fn adapters(&self) -> &[Arc<dyn AgentAdapter>] {
+        &self.adapters
+    }
 }
 impl Default for AdapterRegistry {
     fn default() -> Self {
