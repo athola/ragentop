@@ -8,31 +8,62 @@ use std::time::{Duration, SystemTime};
 /// 5 minutes accounts for Claude's batched writes and user think time.
 const ACTIVE_THRESHOLD: Duration = Duration::from_secs(300);
 
-/// Get PIDs of running claude processes and their working directories
+/// Get PIDs of running claude processes and their working directories.
+///
+/// This function uses `pgrep` to find running Claude processes and reads their
+/// current working directories from `/proc/<pid>/cwd`. Process detection failures
+/// are logged at debug level for troubleshooting.
 fn get_active_claude_pids() -> std::collections::HashSet<String> {
     let mut active_dirs = std::collections::HashSet::new();
     // Find claude processes and their working directories
-    if let Ok(output) = std::process::Command::new("pgrep")
+    match std::process::Command::new("pgrep")
         .args(["-a", "claude"])
         .output()
     {
-        if output.status.success() {
+        Ok(output) if output.status.success() => {
             // Claude is running - mark as having active sessions
             for line in String::from_utf8_lossy(&output.stdout).lines() {
                 if let Some(pid) = line.split_whitespace().next() {
                     // Get cwd for this PID
-                    if let Ok(cwd) = std::fs::read_link(format!("/proc/{pid}/cwd")) {
-                        active_dirs.insert(cwd.to_string_lossy().to_string());
+                    match std::fs::read_link(format!("/proc/{pid}/cwd")) {
+                        Ok(cwd) => {
+                            active_dirs.insert(cwd.to_string_lossy().to_string());
+                        }
+                        Err(e) => {
+                            tracing::debug!("Failed to read /proc/{pid}/cwd: {e}");
+                        }
                     }
                 }
             }
+        }
+        Ok(output) => {
+            tracing::debug!(
+                "pgrep returned non-success status: {}",
+                output.status.code().unwrap_or(-1)
+            );
+        }
+        Err(e) => {
+            tracing::debug!("pgrep command failed: {e}");
         }
     }
     active_dirs
 }
 
 /// Converts a Claude project directory name back to a path.
-/// Rules: -- = . (dot), finds longest existing parent path
+///
+/// # Security Assumptions
+///
+/// This function reconstructs paths from directory names in `~/.claude/projects/`,
+/// which is the user's own filesystem. The reconstructed path is used for **display
+/// purposes only** (showing which project a session belongs to) and is **not used
+/// for file I/O operations** on the reconstructed path.
+///
+/// The `working_dir` field in `AgentSession` is informational metadata for the TUI
+/// and does not authorize or enable subsequent file operations.
+///
+/// # Rules
+/// - `--` is converted to `/.` (hidden directories)
+/// - Finds longest existing parent path
 fn project_dir_to_path(name: &str) -> String {
     // -- means dot (hidden dirs)
     let name = name.replace("--", "/.");

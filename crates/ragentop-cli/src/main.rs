@@ -10,16 +10,16 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Manage the background daemon
+    /// Manage the background daemon [stub: not yet implemented]
     Daemon {
         #[command(subcommand)]
         action: DaemonAction,
     },
-    /// Launch the terminal UI
+    /// Launch the terminal UI [stub: not yet implemented]
     Tui,
     /// Show status of running agents
     Status,
-    /// Start the web dashboard server
+    /// Start the web dashboard server [stub: not yet implemented]
     Web {
         /// Port to listen on
         #[arg(short, long, default_value = "3000")]
@@ -35,9 +35,9 @@ enum Commands {
 
 #[derive(Subcommand)]
 enum DaemonAction {
-    /// Start the daemon
+    /// Start the daemon [stub: not yet implemented]
     Start,
-    /// Stop the daemon
+    /// Stop the daemon [stub: not yet implemented]
     Stop,
 }
 

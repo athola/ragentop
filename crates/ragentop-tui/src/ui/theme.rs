@@ -15,6 +15,7 @@ impl Theme {
     pub const STATUS_PAUSED: Color = Color::DarkGray;
 
     #[must_use]
+    #[allow(deprecated)] // Glm variant retained for backwards compatibility
     pub const fn agent_color(agent: AgentType) -> Color {
         match agent {
             AgentType::Claude => Color::Rgb(217, 119, 6),
@@ -22,7 +23,7 @@ impl Theme {
             AgentType::Gemini => Color::Rgb(59, 130, 246),
             AgentType::Copilot => Color::Rgb(139, 92, 246),
             AgentType::Qwen => Color::Rgb(6, 182, 212),
-            AgentType::Glm => Color::Rgb(236, 72, 153),
+            AgentType::Glm => Color::Rgb(236, 72, 153), // Deprecated, kept for legacy data
         }
     }
 

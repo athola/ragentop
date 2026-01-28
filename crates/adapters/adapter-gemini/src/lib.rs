@@ -1,4 +1,13 @@
 //! Google Gemini CLI adapter for ragentop.
+//!
+//! # Implementation Status
+//!
+//! | Feature | Status |
+//! |---------|--------|
+//! | Session detection | ✅ Implemented |
+//! | Command history | ✅ Implemented |
+//! | Metrics polling | ❌ Stub (returns defaults) |
+//! | Cost tracking | ❌ Not available |
 
 pub mod detector;
 

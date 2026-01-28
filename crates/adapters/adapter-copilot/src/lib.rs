@@ -1,4 +1,13 @@
 //! GitHub Copilot CLI adapter for ragentop.
+//!
+//! # Implementation Status
+//!
+//! | Feature | Status |
+//! |---------|--------|
+//! | Session detection | ✅ Implemented |
+//! | Command history | ❌ Stub (not available from Copilot) |
+//! | Metrics polling | ❌ Stub (returns defaults) |
+//! | Cost tracking | ❌ Not available |
 
 pub mod detector;
 use ragentop_core::{

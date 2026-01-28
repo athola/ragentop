@@ -1,4 +1,13 @@
 //! Qwen CLI adapter for ragentop.
+//!
+//! # Implementation Status
+//!
+//! | Feature | Status |
+//! |---------|--------|
+//! | Session detection | ✅ Implemented |
+//! | Command history | ✅ Implemented |
+//! | Metrics polling | ✅ Implemented (token aggregation) |
+//! | Cost tracking | ❌ Not available |
 
 pub mod detector;
 pub mod parser;
