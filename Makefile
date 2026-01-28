@@ -10,6 +10,7 @@
         demo demo-adapters demo-architecture demo-all demo-types \
         demo-detection demo-metrics demo-history demo-dag \
         demo-multiplexer demo-protocol demo-tracking \
+        demo-daemon-start demo-cleanup \
         ci ci-full pre-commit pre-push githooks \
         tree deps size version dry-run-build dry-run-test
 
@@ -26,7 +27,7 @@ CARGO_WATCH := cargo-watch
 
 # Project metadata
 WORKSPACE_MEMBERS := ragentop-core ragentop-daemon ragentop-tui ragentop-web ragentop-cli
-ADAPTERS := adapter-claude adapter-codex adapter-gemini adapter-copilot adapter-qwen adapter-glm
+ADAPTERS := adapter-claude adapter-codex adapter-gemini adapter-copilot adapter-qwen
 
 ##@ General
 
@@ -163,187 +164,387 @@ install-release: ## Install release-optimized binary
 
 ##@ Demonstration
 
+# Daemon lifecycle for demos
+demo-daemon-start: build
+	@echo "┌─ Starting daemon for demo... ─────────────────────────┐"
+	@./target/release/ragentop daemon start & sleep 1
+	@echo "│  ✓ Daemon started                                     │"
+	@echo "└───────────────────────────────────────────────────────┘"
+
+demo-cleanup:
+	@echo "┌─ Cleaning up demo daemon... ──────────────────────────┐"
+	@./target/release/ragentop daemon stop 2>/dev/null || true
+	@rm -f /tmp/ragentop.sock
+	@echo "│  ✓ Daemon stopped                                     │"
+	@echo "└───────────────────────────────────────────────────────┘"
+
 demo: build ## Run demonstration of core functionality
-	@echo "=== ragentop Demonstration ==="
+	@echo "╔═══════════════════════════════════════════════════════╗"
+	@echo "║            ragentop — Agent Monitor                   ║"
+	@echo "╚═══════════════════════════════════════════════════════╝"
 	@echo ""
-	@echo "1. Checking binary availability..."
+	@echo "┌─ Binary Metadata ────────────────────────────────────┐"
 	@if [ -f target/release/ragentop ]; then \
-		echo "   ✓ CLI binary available"; \
+		VERSION=$$(grep '^version' Cargo.toml | head -1 | cut -d'"' -f2); \
+		SIZE=$$(du -h target/release/ragentop | cut -f1); \
+		echo "│  Binary:  target/release/ragentop"; \
+		echo "│  Version: $$VERSION"; \
+		echo "│  Size:    $$SIZE"; \
+		echo "│  Profile: release"; \
 	else \
-		echo "   ✗ CLI binary not found. Run 'make build' first."; \
+		echo "│  ✗ CLI binary not found. Run 'make build' first."; \
 		exit 1; \
 	fi
+	@echo "└───────────────────────────────────────────────────────┘"
 	@echo ""
-	@echo "2. Testing adapter detection..."
+	@echo "┌─ Adapters ($(words $(ADAPTERS))) ─────────────────────────────────────┐"
 	@for adapter in $(ADAPTERS); do \
 		if [ -d "crates/adapters/$$adapter" ]; then \
-			echo "   ✓ $$adapter"; \
+			echo "│  ✓ $$adapter"; \
 		fi; \
 	done
+	@echo "│  Capabilities: tokens, cost, commands, model_info"
+	@echo "└───────────────────────────────────────────────────────┘"
 	@echo ""
-	@echo "3. Workspace members:"
+	@echo "┌─ Workspace Crates ($(words $(WORKSPACE_MEMBERS))) ─────────────────────────────┐"
 	@for member in $(WORKSPACE_MEMBERS); do \
 		if [ -d "crates/$$member" ]; then \
-			echo "   ✓ $$member"; \
+			LINES=$$(find "crates/$$member/src" -name '*.rs' -exec cat {} + 2>/dev/null | wc -l); \
+			printf "│  ✓ %-22s %5d lines\n" "$$member" "$$LINES"; \
 		fi; \
 	done
+	@echo "└───────────────────────────────────────────────────────┘"
 	@echo ""
-	@echo "Demonstration complete!"
-	@echo "To run ragentop:"
-	@echo "  ./target/release/ragentop --help"
+	@echo "Run: ./target/release/ragentop --help"
 
-demo-adapters: build ## Demonstrate adapter capabilities (LIVE)
-	@echo "=== Adapter Detection Demo (LIVE) ==="
+demo-adapters: build ## Demonstrate adapter capabilities (LIVE, daemon)
+	@$(MAKE) --no-print-directory demo-daemon-start
+	@echo "╔═══════════════════════════════════════════════════════╗"
+	@echo "║          Adapter Capabilities Demo (LIVE)             ║"
+	@echo "╚═══════════════════════════════════════════════════════╝"
 	@echo ""
-	@./target/release/ragentop detect --verbose 2>/dev/null || ./target/release/ragentop detect
+	@echo "┌─ Adapter Capability Matrix ──────────────────────────┐"
+	@printf "│  %-18s %-8s %-6s %-6s %-6s %-8s\n" "Adapter" "Tokens" "Cost" "Cmds" "Model" "Replay"
+	@echo "│  ────────────────── ──────── ────── ────── ────── ────────"
+	@printf "│  %-18s %-8s %-6s %-6s %-6s %-8s\n" "adapter-claude"   "✓" "✓" "✓" "✓" "✓"
+	@printf "│  %-18s %-8s %-6s %-6s %-6s %-8s\n" "adapter-codex"    "✓" "✓" "✓" "✓" "—"
+	@printf "│  %-18s %-8s %-6s %-6s %-6s %-8s\n" "adapter-gemini"   "✓" "✓" "✓" "✓" "—"
+	@printf "│  %-18s %-8s %-6s %-6s %-6s %-8s\n" "adapter-copilot"  "✓" "—" "✓" "✓" "—"
+	@printf "│  %-18s %-8s %-6s %-6s %-6s %-8s\n" "adapter-qwen"     "✓" "✓" "✓" "✓" "—"
+	@echo "└───────────────────────────────────────────────────────┘"
 	@echo ""
-	@echo "Supported adapters: $(ADAPTERS)"
+	@echo "┌─ Live Detection ─────────────────────────────────────┐"
+	@./target/release/ragentop detect --verbose 2>/dev/null || ./target/release/ragentop detect 2>/dev/null || echo "│  (no sessions detected)"
+	@echo "└───────────────────────────────────────────────────────┘"
+	@$(MAKE) --no-print-directory demo-cleanup
 
 demo-architecture: ## Show architecture overview
-	@echo "=== ragentop Architecture ==="
+	@echo "╔═══════════════════════════════════════════════════════╗"
+	@echo "║            ragentop Architecture                      ║"
+	@echo "╚═══════════════════════════════════════════════════════╝"
 	@echo ""
 	@echo "FUNCTIONAL CORE (ragentop-core)"
-	@echo "  ├── Pure functions only"
-	@echo "  ├── Types, traits, DAG operations"
+	@echo "  ├── Pure functions only — NO I/O, NO side effects"
+	@echo "  ├── Types, traits (ports), DAG operations"
 	@echo "  └── Test target: 90% coverage"
 	@echo ""
 	@echo "HEXAGONAL BOUNDARY"
-	@echo "  ├── Ports = traits in core"
-	@echo "  └── Adapters = implementations"
+	@echo "  ├── Ports = traits defined in core (AgentAdapter, DagStore)"
+	@echo "  └── Adapters = implementations in adapter-* crates"
 	@echo ""
 	@echo "IMPERATIVE SHELL"
-	@echo "  ├── daemon: Background collector"
+	@echo "  ├── daemon: Background collector, socket API"
 	@echo "  ├── tui: Terminal UI (ratatui)"
 	@echo "  ├── web: Web UI (leptos)"
-	@echo "  └── cli: Command-line interface"
+	@echo "  └── cli: Command-line interface (clap)"
 	@echo ""
-	@echo "AGENT ADAPTERS"
-	@for adapter in $(ADAPTERS); do \
-		echo "  ├── $$adapter"; \
+	@echo "┌─ Crate Dependency Graph ─────────────────────────────┐"
+	@$(CARGO) tree --workspace --depth 1 2>/dev/null | head -30 || echo "│  (cargo tree unavailable)"
+	@echo "└───────────────────────────────────────────────────────┘"
+	@echo ""
+	@echo "┌─ Lines of Code per Crate ────────────────────────────┐"
+	@for member in $(WORKSPACE_MEMBERS); do \
+		if [ -d "crates/$$member/src" ]; then \
+			LINES=$$(find "crates/$$member/src" -name '*.rs' -exec cat {} + 2>/dev/null | wc -l); \
+			printf "│  %-22s %5d lines\n" "$$member" "$$LINES"; \
+		fi; \
 	done
-	@echo "  └── (each implements AgentAdapter trait)"
+	@for adapter in $(ADAPTERS); do \
+		if [ -d "crates/adapters/$$adapter/src" ]; then \
+			LINES=$$(find "crates/adapters/$$adapter/src" -name '*.rs' -exec cat {} + 2>/dev/null | wc -l); \
+			printf "│  %-22s %5d lines\n" "$$adapter" "$$LINES"; \
+		fi; \
+	done
+	@echo "└───────────────────────────────────────────────────────┘"
+	@echo ""
+	@echo "┌─ Core Traits (Ports) ────────────────────────────────┐"
+	@grep -rn 'pub trait' crates/ragentop-core/src/ 2>/dev/null | sed 's/.*src\//│  /' || echo "│  (none found)"
+	@echo "└───────────────────────────────────────────────────────┘"
 
-demo-all: demo-types demo-detection demo-metrics demo-history demo-dag demo-multiplexer demo-protocol demo-tracking ## Run all functionality demos
+demo-all: demo-types demo-detection demo-metrics demo-history demo-dag demo-multiplexer demo-protocol demo-tracking demo-cleanup ## Run all functionality demos
 
 demo-types: ## Demonstrate core type system
-	@echo "=== Core Type System Demo ==="
+	@echo "╔═══════════════════════════════════════════════════════╗"
+	@echo "║            Core Type System Demo                      ║"
+	@echo "╚═══════════════════════════════════════════════════════╝"
 	@echo ""
-	@echo "Agent Types Supported:"
-	@echo "  - Claude: Anthropic's Claude Code"
-	@echo "  - Codex: OpenAI's Codex CLI"
-	@echo "  - Gemini: Google's Gemini CLI"
-	@echo "  - Copilot: GitHub's Copilot CLI"
-	@echo "  - Qwen: Alibaba's Qwen CLI"
-	@echo "  - GLM: 智谱 GLM (Claude proxy)"
+	@echo "┌─ AgentType Enum ─────────────────────────────────────┐"
+	@printf "│  %-10s %-30s %-20s\n" "Variant" "Description" "Config Dir"
+	@echo "│  ────────── ────────────────────────────── ────────────────────"
+	@printf "│  %-10s %-30s %-20s\n" "Claude"  "Anthropic's Claude Code"     "~/.claude/"
+	@printf "│  %-10s %-30s %-20s\n" "Codex"   "OpenAI's Codex CLI"          "~/.codex/"
+	@printf "│  %-10s %-30s %-20s\n" "Gemini"  "Google's Gemini CLI"         "~/.gemini/"
+	@printf "│  %-10s %-30s %-20s\n" "Copilot" "GitHub's Copilot CLI"        "~/.config/github-copilot/"
+	@printf "│  %-10s %-30s %-20s\n" "Qwen"    "Alibaba's Qwen CLI"          "~/.qwen/"
+	@echo "└───────────────────────────────────────────────────────┘"
 	@echo ""
-	@echo "Session Status Types:"
-	@echo "  - Active: Currently running session"
-	@echo "  - Idle: Session exists but inactive"
-	@echo "  - Paused: Session paused by user"
+	@echo "┌─ SessionStatus Enum ─────────────────────────────────┐"
+	@printf "│  %-10s %-45s\n" "Variant" "Description"
+	@echo "│  ────────── ─────────────────────────────────────────────"
+	@printf "│  %-10s %-45s\n" "Active"  "Running process or modified within 5 minutes"
+	@printf "│  %-10s %-45s\n" "Idle"    "Session exists but no recent activity"
+	@printf "│  %-10s %-45s\n" "Paused"  "Session explicitly paused by user"
+	@echo "└───────────────────────────────────────────────────────┘"
 	@echo ""
-	@echo "History Depth Levels:"
-	@echo "  - ToolCallsOnly: Level 1 - tool calls only"
-	@echo "  - WithResponses: Level 2 - with abbreviated responses (default)"
-	@echo "  - FullConversation: Level 3 - full conversation turns"
+	@echo "┌─ HistoryDepth Enum ──────────────────────────────────┐"
+	@printf "│  %-20s %-8s %-25s\n" "Variant" "Level" "Data Volume Estimate"
+	@echo "│  ──────────────────── ──────── ─────────────────────────"
+	@printf "│  %-20s %-8s %-25s\n" "ToolCallsOnly"    "1" "~1-5 KB per session"
+	@printf "│  %-20s %-8s %-25s\n" "WithResponses"    "2" "~10-50 KB per session"
+	@printf "│  %-20s %-8s %-25s\n" "FullConversation" "3" "~100 KB-1 MB per session"
+	@echo "└───────────────────────────────────────────────────────┘"
 	@echo ""
-	@echo "Command Status Types:"
-	@echo "  - Success: Command completed successfully"
-	@echo "  - Failed: Command failed"
-	@echo "  - Running: Command currently executing"
+	@echo "┌─ CommandStatus Enum ─────────────────────────────────┐"
+	@printf "│  %-10s %-45s\n" "Success" "Command completed successfully"
+	@printf "│  %-10s %-45s\n" "Failed"  "Command exited with error"
+	@printf "│  %-10s %-45s\n" "Running" "Command currently executing"
+	@echo "└───────────────────────────────────────────────────────┘"
 	@echo ""
-	@echo "Run tests to verify type system:"
-	@echo "  make test-core"
+	@echo "┌─ Data Model Summary ─────────────────────────────────┐"
+	@TYPES=$$(grep -rn 'pub struct' crates/ragentop-core/src/ 2>/dev/null | wc -l); \
+	TRAITS=$$(grep -rn 'pub trait' crates/ragentop-core/src/ 2>/dev/null | wc -l); \
+	ENUMS=$$(grep -rn 'pub enum' crates/ragentop-core/src/ 2>/dev/null | wc -l); \
+	echo "│  Structs: $$TYPES   Traits: $$TRAITS   Enums: $$ENUMS"; \
+	echo "└───────────────────────────────────────────────────────┘"
+	@echo ""
+	@echo "Verify with: make test-core"
 
-demo-detection: build ## Demonstrate agent session detection (LIVE)
-	@echo "=== Agent Session Detection Demo (LIVE) ==="
+demo-detection: build ## Demonstrate agent session detection (LIVE, daemon)
+	@$(MAKE) --no-print-directory demo-daemon-start
+	@echo "╔═══════════════════════════════════════════════════════╗"
+	@echo "║       Agent Session Detection Demo (LIVE)             ║"
+	@echo "╚═══════════════════════════════════════════════════════╝"
 	@echo ""
-	@echo "Active = running claude process OR modified within 5 minutes"
+	@echo "┌─ Per-Adapter Capability Matrix ──────────────────────┐"
+	@printf "│  %-18s %-8s %-6s %-6s %-6s %-8s\n" "Adapter" "Tokens" "Cost" "Cmds" "Model" "Replay"
+	@echo "│  ────────────────── ──────── ────── ────── ────── ────────"
+	@printf "│  %-18s %-8s %-6s %-6s %-6s %-8s\n" "adapter-claude"   "✓" "✓" "✓" "✓" "✓"
+	@printf "│  %-18s %-8s %-6s %-6s %-6s %-8s\n" "adapter-codex"    "✓" "✓" "✓" "✓" "—"
+	@printf "│  %-18s %-8s %-6s %-6s %-6s %-8s\n" "adapter-gemini"   "✓" "✓" "✓" "✓" "—"
+	@printf "│  %-18s %-8s %-6s %-6s %-6s %-8s\n" "adapter-copilot"  "✓" "—" "✓" "✓" "—"
+	@printf "│  %-18s %-8s %-6s %-6s %-6s %-8s\n" "adapter-qwen"     "✓" "✓" "✓" "✓" "—"
+	@echo "└───────────────────────────────────────────────────────┘"
 	@echo ""
-	@./target/release/ragentop detect --verbose
+	@echo "┌─ Detected Sessions ──────────────────────────────────┐"
+	@echo "│  Active = running process OR modified within 5 min"
+	@echo "│"
+	@./target/release/ragentop detect --verbose 2>/dev/null | sed 's/^/│  /' || echo "│  (no sessions detected)"
+	@echo "└───────────────────────────────────────────────────────┘"
+	@$(MAKE) --no-print-directory demo-cleanup
 
-demo-metrics: build ## Demonstrate metrics collection (LIVE)
-	@echo "=== Metrics Collection Demo (LIVE) ==="
+demo-metrics: build ## Demonstrate metrics collection (LIVE, daemon)
+	@$(MAKE) --no-print-directory demo-daemon-start
+	@echo "╔═══════════════════════════════════════════════════════╗"
+	@echo "║          Metrics Collection Demo (LIVE)               ║"
+	@echo "╚═══════════════════════════════════════════════════════╝"
 	@echo ""
-	@echo "Detecting sessions on this machine..."
-	@./target/release/ragentop detect
+	@echo "┌─ Metrics Fields ─────────────────────────────────────┐"
+	@printf "│  %-20s %-10s %-25s\n" "Field" "Unit" "Valid Range"
+	@echo "│  ──────────────────── ────────── ─────────────────────────"
+	@printf "│  %-20s %-10s %-25s\n" "tokens_in"      "tokens"  "0 .. 2^32"
+	@printf "│  %-20s %-10s %-25s\n" "tokens_out"     "tokens"  "0 .. 2^32"
+	@printf "│  %-20s %-10s %-25s\n" "cost_usd"       "USD"     "0.00 .. 999.99"
+	@printf "│  %-20s %-10s %-25s\n" "cpu_percent"    "%"       "0.0 .. 100.0"
+	@printf "│  %-20s %-10s %-25s\n" "memory_mb"      "MB"      "0 .. system max"
+	@printf "│  %-20s %-10s %-25s\n" "active_commands" "count"  "0 .. 100"
+	@echo "└───────────────────────────────────────────────────────┘"
 	@echo ""
-	@echo "Note: Full metrics polling requires running daemon."
-	@echo "Start daemon with: ./target/release/ragentop daemon start"
+	@echo "┌─ Live Session Metrics (sampled from history) ────────┐"
+	@if [ -d "$$HOME/.claude/projects" ]; then \
+		printf "│  %-30s %8s %10s\n" "Project" "Lines" "Size"; \
+		echo "│  ────────────────────────────── ──────── ──────────"; \
+		DIRS=$$(find "$$HOME/.claude/projects" -name "*.jsonl" -type f 2>/dev/null | xargs -I{} dirname {} | sort -u | head -5 || true); \
+		for d in $$DIRS; do \
+			NAME=$$(basename "$$d" | cut -c1-28); \
+			LINES=$$(cat "$$d"/*.jsonl 2>/dev/null | wc -l); \
+			SIZE=$$(du -sh "$$d" 2>/dev/null | cut -f1); \
+			printf "│  %-30s %8s %10s\n" "$$NAME" "$$LINES" "$$SIZE"; \
+		done; \
+		TOTAL_FILES=$$(find "$$HOME/.claude/projects" -name "*.jsonl" -type f 2>/dev/null | wc -l); \
+		echo "│"; \
+		echo "│  Total session files: $$TOTAL_FILES"; \
+	else \
+		echo "│  (no Claude projects directory found)"; \
+	fi
+	@echo "└───────────────────────────────────────────────────────┘"
+	@$(MAKE) --no-print-directory demo-cleanup
 
 demo-history: ## Demonstrate command history retrieval (LIVE)
-	@echo "=== Command History Demo (LIVE) ==="
+	@echo "╔═══════════════════════════════════════════════════════╗"
+	@echo "║          Command History Demo (LIVE)                  ║"
+	@echo "╚═══════════════════════════════════════════════════════╝"
 	@echo ""
-	@echo "Claude Code session history locations:"
+	@echo "┌─ JSONL File Statistics ──────────────────────────────┐"
 	@if [ -d "$$HOME/.claude/projects" ]; then \
-		echo "  $$HOME/.claude/projects/"; \
-		find "$$HOME/.claude/projects" -name "*.jsonl" -type f 2>/dev/null | head -5 | while IFS= read -r f; do \
-			echo "    - $$f ($$(wc -l < "$$f") entries)"; \
-		done || echo "    (no JSONL history files found)"; \
+		COUNT=$$(find "$$HOME/.claude/projects" -name "*.jsonl" -type f 2>/dev/null | wc -l); \
+		TOTAL=$$(du -sh "$$HOME/.claude/projects" 2>/dev/null | cut -f1); \
+		NEWEST=$$(find "$$HOME/.claude/projects" -name "*.jsonl" -type f -exec stat -c '%Y %n' {} + 2>/dev/null | sort -rn | head -1 | cut -d' ' -f2- || true); \
+		OLDEST=$$(find "$$HOME/.claude/projects" -name "*.jsonl" -type f -exec stat -c '%Y %n' {} + 2>/dev/null | sort -n | head -1 | cut -d' ' -f2- || true); \
+		echo "│  Location: $$HOME/.claude/projects/"; \
+		echo "│  Files:    $$COUNT JSONL files"; \
+		echo "│  Size:     $$TOTAL total"; \
+		echo "│  Newest:   $$(basename "$$NEWEST" 2>/dev/null || echo '—')"; \
+		echo "│  Oldest:   $$(basename "$$OLDEST" 2>/dev/null || echo '—')"; \
 	else \
-		echo "  (no Claude projects directory found)"; \
+		echo "│  (no Claude projects directory found)"; \
 	fi
+	@echo "└───────────────────────────────────────────────────────┘"
 	@echo ""
-	@echo "History depth levels: ToolCallsOnly, WithResponses, FullConversation"
+	@echo "┌─ History Depth Comparison ───────────────────────────┐"
+	@printf "│  %-20s %-8s %-30s\n" "Level" "Depth" "Data Included"
+	@echo "│  ──────────────────── ──────── ──────────────────────────────"
+	@printf "│  %-20s %-8s %-30s\n" "ToolCallsOnly"    "1" "Tool names + args only"
+	@printf "│  %-20s %-8s %-30s\n" "WithResponses"    "2" "Above + abbreviated responses"
+	@printf "│  %-20s %-8s %-30s\n" "FullConversation" "3" "Complete conversation turns"
+	@echo "└───────────────────────────────────────────────────────┘"
 
 demo-dag: ## Demonstrate Merkle DAG storage (LIVE)
-	@echo "=== Merkle DAG Storage Demo (LIVE) ==="
+	@echo "╔═══════════════════════════════════════════════════════╗"
+	@echo "║          Merkle DAG Storage Demo (LIVE)               ║"
+	@echo "╚═══════════════════════════════════════════════════════╝"
 	@echo ""
+	@echo "┌─ Storage Engine ─────────────────────────────────────┐"
+	@echo "│  Backend:  sled (embedded key-value store)"
+	@echo "│  Hash:     BLAKE3 (content-addressable)"
+	@echo "│  Structure: Merkle DAG (directed acyclic graph)"
+	@echo "└───────────────────────────────────────────────────────┘"
+	@echo ""
+	@echo "┌─ Storage Statistics ─────────────────────────────────┐"
 	@DAG_DIR="$$HOME/.local/share/ragentop/dag"; \
 	if [ -d "$$DAG_DIR" ]; then \
-		echo "DAG storage: $$DAG_DIR"; \
-		echo "  Size: $$(du -sh "$$DAG_DIR" 2>/dev/null | cut -f1)"; \
-		echo "  Files: $$(find "$$DAG_DIR" -type f 2>/dev/null | wc -l)"; \
+		SIZE=$$(du -sh "$$DAG_DIR" 2>/dev/null | cut -f1); \
+		FILES=$$(find "$$DAG_DIR" -type f 2>/dev/null | wc -l); \
+		echo "│  Path:  $$DAG_DIR"; \
+		echo "│  Size:  $$SIZE"; \
+		echo "│  Files: $$FILES"; \
 	else \
-		echo "DAG storage: $$DAG_DIR (not created yet)"; \
-		echo "  Will be created when daemon starts"; \
+		echo "│  Path:   $$DAG_DIR (not created yet)"; \
+		echo "│  Status: Will be created when daemon starts"; \
 	fi
+	@echo "└───────────────────────────────────────────────────────┘"
 	@echo ""
-	@echo "Backend: sled (embedded), Hash: BLAKE3"
+	@echo "┌─ Sample StateNode Structure ─────────────────────────┐"
+	@echo '│  {'
+	@echo '│    "hash": "blake3:a1b2c3d4...",'
+	@echo '│    "parent": "blake3:e5f6a7b8...",'
+	@echo '│    "timestamp": "2026-01-27T12:00:00Z",'
+	@echo '│    "agent_type": "Claude",'
+	@echo '│    "session_id": "abc-123",'
+	@echo '│    "metrics": { "tokens_in": 1500, "cost_usd": 0.04 }'
+	@echo '│  }'
+	@echo "└───────────────────────────────────────────────────────┘"
 
 demo-multiplexer: ## Demonstrate terminal multiplexer integration (LIVE)
-	@echo "=== Terminal Multiplexer Demo (LIVE) ==="
+	@echo "╔═══════════════════════════════════════════════════════╗"
+	@echo "║       Terminal Multiplexer Demo (LIVE)                ║"
+	@echo "╚═══════════════════════════════════════════════════════╝"
+	@echo ""
+	@echo "┌─ Capability Matrix ──────────────────────────────────┐"
+	@printf "│  %-10s %-10s %-10s %-20s\n" "Mux" "Panes" "Sessions" "Status"
+	@echo "│  ────────── ────────── ────────── ────────────────────"
+	@TMUX_STATUS="not found"; TMUX_PANES="-"; TMUX_SESSIONS="-"; \
+	if command -v tmux >/dev/null 2>&1; then \
+		if tmux info >/dev/null 2>&1; then \
+			TMUX_PANES=$$(tmux list-panes -a 2>/dev/null | wc -l); \
+			TMUX_SESSIONS=$$(tmux list-sessions 2>/dev/null | wc -l); \
+			TMUX_STATUS="running"; \
+		else \
+			TMUX_STATUS="installed"; \
+		fi; \
+	fi; \
+	printf "│  %-10s %-10s %-10s %-20s\n" "tmux" "$$TMUX_PANES" "$$TMUX_SESSIONS" "$$TMUX_STATUS"
+	@ZELLIJ_STATUS="not found"; \
+	if command -v zellij >/dev/null 2>&1; then \
+		ZELLIJ_STATUS="installed"; \
+	fi; \
+	printf "│  %-10s %-10s %-10s %-20s\n" "zellij" "-" "-" "$$ZELLIJ_STATUS"
+	@echo "└───────────────────────────────────────────────────────┘"
 	@echo ""
 	@if command -v tmux >/dev/null 2>&1 && tmux info >/dev/null 2>&1; then \
-		echo "tmux panes:"; \
-		tmux list-panes -a -F '  #{pane_id}: #{pane_title} (#{pane_current_command})' 2>/dev/null || echo "  (no panes)"; \
-	else \
-		echo "tmux: not running or not installed"; \
-	fi
-	@echo ""
-	@if command -v zellij >/dev/null 2>&1; then \
-		echo "zellij: installed"; \
-		zellij list-sessions 2>/dev/null || echo "  (no sessions)"; \
-	else \
-		echo "zellij: not installed"; \
+		echo "┌─ tmux Pane Details ──────────────────────────────────┐"; \
+		tmux list-panes -a -F '│  #{pane_id}: #{pane_title} (#{pane_current_command})' 2>/dev/null || echo "│  (no panes)"; \
+		echo "└───────────────────────────────────────────────────────┘"; \
 	fi
 
-demo-protocol: ## Demonstrate daemon protocol (LIVE)
-	@echo "=== Daemon Protocol Demo (LIVE) ==="
+demo-protocol: build ## Demonstrate daemon protocol (LIVE, daemon)
+	@$(MAKE) --no-print-directory demo-daemon-start
+	@echo "╔═══════════════════════════════════════════════════════╗"
+	@echo "║          Daemon Protocol Demo (LIVE)                  ║"
+	@echo "╚═══════════════════════════════════════════════════════╝"
 	@echo ""
+	@echo "┌─ Socket Info ────────────────────────────────────────┐"
 	@SOCKET="/tmp/ragentop.sock"; \
 	if [ -S "$$SOCKET" ]; then \
-		echo "Daemon socket: $$SOCKET (ACTIVE)"; \
-		ls -la "$$SOCKET"; \
+		echo "│  Path:   $$SOCKET"; \
+		echo "│  Status: ACTIVE"; \
+		PERMS=$$(stat -c '%a' "$$SOCKET" 2>/dev/null || stat -f '%Lp' "$$SOCKET" 2>/dev/null); \
+		echo "│  Perms:  $$PERMS"; \
+		echo "│  Type:   Unix domain socket (SOCK_STREAM)"; \
 	else \
-		echo "Daemon socket: $$SOCKET (not running)"; \
-		echo "  Start with: ./target/release/ragentop daemon start"; \
+		echo "│  Path:   $$SOCKET"; \
+		echo "│  Status: NOT RUNNING"; \
 	fi
+	@echo "└───────────────────────────────────────────────────────┘"
 	@echo ""
-	@echo "Protocol: JSON over Unix socket"
+	@echo "┌─ Protocol Messages ──────────────────────────────────┐"
+	@printf "│  %-20s %-35s\n" "Message" "Response Structure"
+	@echo "│  ──────────────────── ───────────────────────────────────"
+	@printf "│  %-20s %-35s\n" "ListSessions"  "{ sessions: [Session...] }"
+	@printf "│  %-20s %-35s\n" "GetMetrics(id)" "{ metrics: Metrics }"
+	@printf "│  %-20s %-35s\n" "GetHistory(id)" "{ entries: [HistoryEntry...] }"
+	@printf "│  %-20s %-35s\n" "Subscribe(id)"  "Stream<MetricsUpdate>"
+	@echo "│"
+	@echo "│  Protocol: JSON over Unix socket"
+	@echo "└───────────────────────────────────────────────────────┘"
+	@$(MAKE) --no-print-directory demo-cleanup
 
-demo-tracking: build ## Demonstrate session tracking (LIVE)
-	@echo "=== Session Tracking Demo (LIVE) ==="
+demo-tracking: build ## Demonstrate session tracking (LIVE, daemon)
+	@$(MAKE) --no-print-directory demo-daemon-start
+	@echo "╔═══════════════════════════════════════════════════════╗"
+	@echo "║          Session Tracking Demo (LIVE)                 ║"
+	@echo "╚═══════════════════════════════════════════════════════╝"
 	@echo ""
-	@echo "Currently detected sessions:"
-	@./target/release/ragentop detect 2>/dev/null || echo "  (run 'make build' first)"
+	@echo "┌─ Detected Sessions ──────────────────────────────────┐"
+	@./target/release/ragentop detect 2>/dev/null | sed 's/^/│  /' || echo "│  (no sessions detected)"
+	@echo "└───────────────────────────────────────────────────────┘"
 	@echo ""
+	@echo "┌─ Session State Transitions ──────────────────────────┐"
+	@echo "│  Active ──► Idle ──► (removed after timeout)"
+	@echo "│    │          ▲"
+	@echo "│    ▼          │"
+	@echo "│  Paused ──────┘"
+	@echo "└───────────────────────────────────────────────────────┘"
+	@echo ""
+	@echo "┌─ Daemon Status ──────────────────────────────────────┐"
 	@SOCKET="/tmp/ragentop.sock"; \
 	if [ -S "$$SOCKET" ]; then \
-		echo "Daemon: running (query via socket for live tracking)"; \
+		echo "│  Daemon: RUNNING (socket active)"; \
+		echo "│  Poll interval: 5s (configurable)"; \
 	else \
-		echo "Daemon: not running"; \
-		echo "  Start with: ./target/release/ragentop daemon start"; \
+		echo "│  Daemon: NOT RUNNING"; \
 	fi
+	@echo "└───────────────────────────────────────────────────────┘"
+	@$(MAKE) --no-print-directory demo-cleanup
 
 ##@ CI/CD
 

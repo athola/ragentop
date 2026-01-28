@@ -3,6 +3,24 @@
 use ragentop_core::{AgentSession, AgentType, Result, SessionId, SessionStatus};
 use serde::Deserialize;
 use std::path::Path;
+use std::time::{Duration, SystemTime};
+
+const ACTIVE_THRESHOLD: Duration = Duration::from_secs(300);
+
+fn is_process_running(name: &str) -> bool {
+    std::process::Command::new("pgrep")
+        .args(["-f", name])
+        .output()
+        .is_ok_and(|o| o.status.success())
+}
+
+fn is_recently_modified(path: &Path, threshold: Duration) -> bool {
+    path.metadata()
+        .and_then(|m| m.modified())
+        .ok()
+        .and_then(|t| SystemTime::now().duration_since(t).ok())
+        .is_some_and(|age| age < threshold)
+}
 
 #[derive(Deserialize)]
 struct CopilotConfig {
@@ -12,19 +30,27 @@ struct CopilotConfig {
 
 /// Detects Copilot sessions in the given config directory.
 ///
-/// Copilot stores config in ~/.copilot/config.json
-///
 /// # Errors
-/// Returns an error if directory reading fails.
+/// Returns an error if the filesystem cannot be read.
 pub fn detect_sessions(config_dir: &Path) -> Result<Vec<AgentSession>> {
     let config_file = config_dir.join("config.json");
     if !config_file.exists() {
         return Ok(vec![]);
     }
 
+    let process_active = is_process_running("copilot");
+    let recently_modified = is_recently_modified(&config_file, ACTIVE_THRESHOLD);
+
     let contents = std::fs::read_to_string(&config_file)?;
     if let Ok(config) = serde_json::from_str::<CopilotConfig>(&contents) {
         if let Some(session_id) = config.session_id {
+            let status = if process_active || recently_modified {
+                SessionStatus::Active
+            } else {
+                SessionStatus::Idle
+            };
+            let started_at = config_file.metadata().ok().and_then(|m| m.modified().ok());
+
             return Ok(vec![AgentSession {
                 id: SessionId::new_unchecked(session_id),
                 agent_type: AgentType::Copilot,
@@ -33,8 +59,8 @@ pub fn detect_sessions(config_dir: &Path) -> Result<Vec<AgentSession>> {
                 working_dir: None,
                 pane_id: None,
                 pid: None,
-                started_at: None,
-                status: SessionStatus::Idle,
+                started_at,
+                status,
             }]);
         }
     }
@@ -68,7 +94,6 @@ mod tests {
         let dir = tempdir().unwrap();
         let copilot_dir = dir.path().join(".copilot");
         fs::create_dir_all(&copilot_dir).unwrap();
-
         let sessions = detect_sessions(&copilot_dir).unwrap();
         assert!(sessions.is_empty());
     }
@@ -77,7 +102,6 @@ mod tests {
     fn test_detect_sessions_nonexistent_returns_empty() {
         let dir = tempdir().unwrap();
         let nonexistent = dir.path().join("does-not-exist");
-
         let sessions = detect_sessions(&nonexistent).unwrap();
         assert!(sessions.is_empty());
     }
@@ -87,12 +111,24 @@ mod tests {
         let dir = tempdir().unwrap();
         let copilot_dir = dir.path().join(".copilot");
         fs::create_dir_all(&copilot_dir).unwrap();
-
-        // Write non-config files that should be ignored
         fs::write(copilot_dir.join("settings.json"), r#"{"theme": "dark"}"#).unwrap();
-        fs::write(copilot_dir.join("random.txt"), "not json").unwrap();
-
         let sessions = detect_sessions(&copilot_dir).unwrap();
         assert!(sessions.is_empty());
+    }
+
+    #[test]
+    fn test_is_recently_modified_true() {
+        let dir = tempdir().unwrap();
+        let file = dir.path().join("recent");
+        fs::write(&file, "data").unwrap();
+        assert!(is_recently_modified(&file, Duration::from_secs(60)));
+    }
+
+    #[test]
+    fn test_is_recently_modified_nonexistent() {
+        assert!(!is_recently_modified(
+            Path::new("/nonexistent"),
+            Duration::from_secs(60)
+        ));
     }
 }

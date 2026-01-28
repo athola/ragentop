@@ -90,7 +90,7 @@ jobs:
           sleep 30
 
           # Adapters (depend on core)
-          for adapter in adapter-claude adapter-codex adapter-gemini adapter-copilot adapter-qwen adapter-glm; do
+          for adapter in adapter-claude adapter-codex adapter-gemini adapter-copilot adapter-qwen; do
             cargo publish -p "$adapter" --allow-dirty
             sleep 15
           done

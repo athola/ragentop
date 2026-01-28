@@ -9,7 +9,7 @@ Track sessions, metrics, and command history across Claude Code and other AI ass
 When working with AI coding agents via SSH or in terminal multiplexers, you need visibility into what's happening without leaving your workflow. ragentop provides:
 
 - **Real-time metrics** — Token usage, cost estimates, session duration
-- **Multi-agent support** — Claude Code, Codex, Copilot, Gemini Code Assist, Qwen, GLM
+- **Multi-agent support** — Claude Code, Codex CLI, Copilot, Gemini CLI, Qwen Code
 - **Command history** — Tool calls with configurable depth (tool-only → full conversation)
 - **Versioned state** — Merkle DAG storage for session history and replay
 - **TUI dashboard** — SSH-friendly interface built with ratatui
@@ -22,12 +22,11 @@ When working with AI coding agents via SSH or in terminal multiplexers, you need
 | Component | Status |
 |-----------|--------|
 | ragentop-core | ✓ Types, traits, DAG, multiplexer, protocol |
-| adapter-claude | ✓ Detection + metrics |
-| adapter-codex | ✓ Detection scaffold |
-| adapter-copilot | ✓ Detection scaffold |
-| adapter-gemini | ✓ Detection scaffold |
-| adapter-qwen | ✓ Detection scaffold |
-| adapter-glm | ✓ Detection scaffold |
+| adapter-claude | ✓ Detection + metrics + parsing |
+| adapter-codex | ✓ Detection + history parsing |
+| adapter-copilot | ✓ Detection |
+| adapter-gemini | ✓ Detection |
+| adapter-qwen | ✓ Detection + parsing |
 | ragentop-daemon | ✓ Socket API, sessions, tmux/zellij |
 | ragentop-tui | ✓ Dashboard + input handling |
 | ragentop-cli | ✓ daemon/tui subcommands |

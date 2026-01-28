@@ -14,9 +14,9 @@ serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 leptos.workspace = true
-leptos_axum = "0.7"
-leptos_meta = "0.7"
-axum = "0.7"
+leptos_axum = "0.8"
+leptos_meta = "0.8"
+axum = "0.8"
 tower = "0.5"
 tower-http = { version = "0.6", features = ["fs"] }
 

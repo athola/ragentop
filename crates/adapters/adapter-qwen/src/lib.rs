@@ -1,6 +1,8 @@
 //! Qwen CLI adapter for ragentop.
 
 pub mod detector;
+pub mod parser;
+
 use ragentop_core::{
     AdapterCapabilities, AgentAdapter, AgentSession, AgentType, Command, HistoryDepth, Result,
     SessionId, SessionMetrics,
@@ -39,17 +41,21 @@ impl AgentAdapter for QwenAdapter {
         detector::detect_sessions(&self.config_dir)
     }
     fn poll_metrics(&self, _: &SessionId) -> Result<SessionMetrics> {
-        Ok(SessionMetrics::default())
+        parser::aggregate_metrics(&self.config_dir)
     }
     fn get_command_history(
         &self,
         _: &SessionId,
         _: HistoryDepth,
-        _: usize,
+        limit: usize,
     ) -> Result<Vec<Command>> {
-        Ok(vec![])
+        parser::parse_history(&self.config_dir, limit)
     }
     fn capabilities(&self) -> AdapterCapabilities {
-        AdapterCapabilities::default()
+        AdapterCapabilities {
+            tokens: true,
+            commands: true,
+            ..AdapterCapabilities::default()
+        }
     }
 }

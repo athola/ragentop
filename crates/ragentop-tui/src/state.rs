@@ -98,3 +98,125 @@ impl Default for AppState {
         Self::new()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ragentop_core::{AgentType, SessionId, SessionStatus};
+
+    fn make_session(name: &str) -> AgentSession {
+        AgentSession {
+            id: SessionId::new_unchecked(name),
+            agent_type: AgentType::Claude,
+            model: None,
+            session_name: Some(name.to_string()),
+            working_dir: None,
+            pane_id: None,
+            pid: None,
+            started_at: None,
+            status: SessionStatus::Active,
+        }
+    }
+
+    #[test]
+    fn new_state_defaults() {
+        let s = AppState::new();
+        assert_eq!(s.selected_index, 0);
+        assert_eq!(s.session_count, 0);
+        assert_eq!(s.active_panel, Panel::SessionList);
+        assert!(!s.detail_expanded);
+        assert!(!s.should_quit);
+        assert!(s.sessions.is_empty());
+        assert!(s.selected_session().is_none());
+    }
+
+    #[test]
+    fn navigate_down_wraps_around() {
+        let mut s = AppState::new();
+        s.update_sessions(vec![make_session("a"), make_session("b")]);
+
+        s.navigate_down(); // 0 -> 1
+        assert_eq!(s.selected_index, 1);
+        s.navigate_down(); // 1 -> 0 (wrap)
+        assert_eq!(s.selected_index, 0);
+    }
+
+    #[test]
+    fn navigate_up_wraps_around() {
+        let mut s = AppState::new();
+        s.update_sessions(vec![
+            make_session("a"),
+            make_session("b"),
+            make_session("c"),
+        ]);
+
+        s.navigate_up(); // 0 -> 2 (wrap)
+        assert_eq!(s.selected_index, 2);
+        s.navigate_up(); // 2 -> 1
+        assert_eq!(s.selected_index, 1);
+    }
+
+    #[test]
+    fn navigate_empty_is_noop() {
+        let mut s = AppState::new();
+        s.navigate_down();
+        assert_eq!(s.selected_index, 0);
+        s.navigate_up();
+        assert_eq!(s.selected_index, 0);
+    }
+
+    #[test]
+    fn toggle_expand() {
+        let mut s = AppState::new();
+        assert!(!s.detail_expanded);
+        s.toggle_expand();
+        assert!(s.detail_expanded);
+        s.toggle_expand();
+        assert!(!s.detail_expanded);
+    }
+
+    #[test]
+    fn cycle_depth() {
+        let mut s = AppState::new();
+        assert_eq!(s.history_depth, HistoryDepth::WithResponses);
+        s.cycle_depth();
+        assert_eq!(s.history_depth, HistoryDepth::FullConversation);
+        s.cycle_depth();
+        assert_eq!(s.history_depth, HistoryDepth::ToolCallsOnly);
+        s.cycle_depth();
+        assert_eq!(s.history_depth, HistoryDepth::WithResponses);
+    }
+
+    #[test]
+    fn update_sessions_clamps_index() {
+        let mut s = AppState::new();
+        s.update_sessions(vec![
+            make_session("a"),
+            make_session("b"),
+            make_session("c"),
+        ]);
+        s.selected_index = 2;
+
+        // Shrink to 2 sessions: index 2 is out of bounds, should clamp to 1
+        s.update_sessions(vec![make_session("x"), make_session("y")]);
+        assert_eq!(s.selected_index, 1);
+    }
+
+    #[test]
+    fn selected_session_returns_correct() {
+        let mut s = AppState::new();
+        s.update_sessions(vec![make_session("a"), make_session("b")]);
+        s.navigate_down();
+        assert_eq!(
+            s.selected_session().unwrap().session_name.as_deref(),
+            Some("b")
+        );
+    }
+
+    #[test]
+    fn quit_sets_flag() {
+        let mut s = AppState::new();
+        s.quit();
+        assert!(s.should_quit);
+    }
+}

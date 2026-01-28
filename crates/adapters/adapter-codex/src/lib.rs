@@ -46,11 +46,14 @@ impl AgentAdapter for CodexAdapter {
         &self,
         _: &SessionId,
         _: HistoryDepth,
-        _: usize,
+        limit: usize,
     ) -> Result<Vec<Command>> {
-        Ok(vec![])
+        detector::parse_history(&self.config_dir, limit)
     }
     fn capabilities(&self) -> AdapterCapabilities {
-        AdapterCapabilities::default()
+        AdapterCapabilities {
+            commands: true,
+            ..AdapterCapabilities::default()
+        }
     }
 }

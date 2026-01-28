@@ -97,7 +97,6 @@ fn detect_sessions(verbose: bool) {
         Box::new(adapter_copilot::CopilotAdapter::new()),
         Box::new(adapter_gemini::GeminiAdapter::new()),
         Box::new(adapter_qwen::QwenAdapter::new()),
-        Box::new(adapter_glm::GlmAdapter::new()),
     ];
 
     let mut total_sessions = 0;

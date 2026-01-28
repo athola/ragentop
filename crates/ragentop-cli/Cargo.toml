@@ -17,7 +17,6 @@ adapter-codex = { path = "../adapters/adapter-codex" }
 adapter-copilot = { path = "../adapters/adapter-copilot" }
 adapter-gemini = { path = "../adapters/adapter-gemini" }
 adapter-qwen = { path = "../adapters/adapter-qwen" }
-adapter-glm = { path = "../adapters/adapter-glm" }
 clap.workspace = true
 tokio.workspace = true
 tracing.workspace = true

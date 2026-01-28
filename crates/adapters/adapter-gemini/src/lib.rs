@@ -44,13 +44,16 @@ impl AgentAdapter for GeminiAdapter {
     }
     fn get_command_history(
         &self,
-        _: &SessionId,
+        session_id: &SessionId,
         _: HistoryDepth,
-        _: usize,
+        limit: usize,
     ) -> Result<Vec<Command>> {
-        Ok(vec![])
+        detector::parse_history(&self.config_dir, session_id.as_str(), limit)
     }
     fn capabilities(&self) -> AdapterCapabilities {
-        AdapterCapabilities::default()
+        AdapterCapabilities {
+            commands: true,
+            ..AdapterCapabilities::default()
+        }
     }
 }

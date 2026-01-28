@@ -97,11 +97,24 @@ make ci-full        # CI with verbose tests
 
 ### Demonstration Targets
 
-| Target | Description |
-|--------|-------------|
-| `demo` | Run full demonstration |
-| `demo-adapters` | Show adapter capabilities |
-| `demo-architecture` | Display architecture overview |
+| Target | Description | Daemon? |
+|--------|-------------|---------|
+| `demo` | Project overview with binary metadata and crate stats | No |
+| `demo-types` | Core type system tables (enums, data model summary) | No |
+| `demo-detection` | Agent session detection with capability matrix | Yes |
+| `demo-metrics` | Metrics fields, units, and live session data | Yes |
+| `demo-history` | JSONL file stats and depth level comparison | No |
+| `demo-dag` | Merkle DAG storage engine details and sample node | No |
+| `demo-multiplexer` | tmux/zellij capability matrix and pane details | No |
+| `demo-protocol` | Socket info, protocol message catalog | Yes |
+| `demo-tracking` | Live sessions, state transitions, daemon status | Yes |
+| `demo-adapters` | Per-adapter capability matrix with live detection | Yes |
+| `demo-architecture` | Crate dependency graph, LOC, traits listing | No |
+| `demo-all` | Run all demos sequentially with cleanup | Mixed |
+| `demo-daemon-start` | Start daemon in background for demos | — |
+| `demo-cleanup` | Stop daemon and remove socket (idempotent) | — |
+
+**Daemon lifecycle**: Targets marked "Yes" automatically start the daemon before running and clean up afterward. `demo-all` runs cleanup once at the end. `demo-cleanup` is safe to run at any time.
 
 ### CI/CD Targets
 
@@ -161,7 +174,6 @@ The Makefile is aware of all agent adapters:
 - `adapter-gemini` - Google Gemini
 - `adapter-copilot` - GitHub Copilot
 - `adapter-qwen` - Alibaba Qwen
-- `adapter-glm` -智谱 GLM
 
 ## Best Practices
 

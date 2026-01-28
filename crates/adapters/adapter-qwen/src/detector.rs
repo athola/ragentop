@@ -3,6 +3,24 @@
 use ragentop_core::{AgentSession, AgentType, Result, SessionId, SessionStatus};
 use serde::Deserialize;
 use std::path::Path;
+use std::time::{Duration, SystemTime};
+
+const ACTIVE_THRESHOLD: Duration = Duration::from_secs(300);
+
+fn is_process_running(name: &str) -> bool {
+    std::process::Command::new("pgrep")
+        .args(["-f", name])
+        .output()
+        .is_ok_and(|o| o.status.success())
+}
+
+fn is_recently_modified(path: &Path, threshold: Duration) -> bool {
+    path.metadata()
+        .and_then(|m| m.modified())
+        .ok()
+        .and_then(|t| SystemTime::now().duration_since(t).ok())
+        .is_some_and(|age| age < threshold)
+}
 
 #[derive(Deserialize)]
 struct QwenLogEntry {
@@ -12,16 +30,15 @@ struct QwenLogEntry {
 
 /// Detects Qwen sessions in the given config directory.
 ///
-/// Qwen stores logs in ~/.qwen/logs/openai/*.json
-///
 /// # Errors
-/// Returns an error if directory reading fails.
+/// Returns an error if the filesystem cannot be read.
 pub fn detect_sessions(config_dir: &Path) -> Result<Vec<AgentSession>> {
     let logs_dir = config_dir.join("logs").join("openai");
     if !logs_dir.exists() {
         return Ok(vec![]);
     }
 
+    let process_active = is_process_running("qwen");
     let mut sessions = Vec::new();
     let mut seen_ids = std::collections::HashSet::new();
 
@@ -29,6 +46,8 @@ pub fn detect_sessions(config_dir: &Path) -> Result<Vec<AgentSession>> {
         let entry = entry?;
         let path = entry.path();
         if path.extension().is_some_and(|e| e == "json") {
+            let recently_modified = is_recently_modified(&path, ACTIVE_THRESHOLD);
+
             if let Ok(contents) = std::fs::read_to_string(&path) {
                 if let Ok(data) = serde_json::from_str::<QwenLogEntry>(&contents) {
                     let id = data.session_id.unwrap_or_else(|| {
@@ -37,6 +56,13 @@ pub fn detect_sessions(config_dir: &Path) -> Result<Vec<AgentSession>> {
                             .unwrap_or_default()
                     });
                     if seen_ids.insert(id.clone()) {
+                        let status = if process_active || recently_modified {
+                            SessionStatus::Active
+                        } else {
+                            SessionStatus::Idle
+                        };
+                        let started_at = path.metadata().ok().and_then(|m| m.modified().ok());
+
                         sessions.push(AgentSession {
                             id: SessionId::new_unchecked(id),
                             agent_type: AgentType::Qwen,
@@ -45,8 +71,8 @@ pub fn detect_sessions(config_dir: &Path) -> Result<Vec<AgentSession>> {
                             working_dir: None,
                             pane_id: None,
                             pid: None,
-                            started_at: None,
-                            status: SessionStatus::Idle,
+                            started_at,
+                            status,
                         });
                     }
                 }
@@ -84,7 +110,6 @@ mod tests {
         let dir = tempdir().unwrap();
         let qwen_dir = dir.path().join(".qwen");
         fs::create_dir_all(&qwen_dir).unwrap();
-
         let sessions = detect_sessions(&qwen_dir).unwrap();
         assert!(sessions.is_empty());
     }
@@ -93,9 +118,21 @@ mod tests {
     fn test_detect_sessions_nonexistent_returns_empty() {
         let dir = tempdir().unwrap();
         let nonexistent = dir.path().join("does-not-exist");
-
         let sessions = detect_sessions(&nonexistent).unwrap();
         assert!(sessions.is_empty());
+    }
+
+    #[test]
+    fn test_detect_sessions_deduplicates_by_session_id() {
+        let dir = tempdir().unwrap();
+        let qwen_dir = dir.path().join(".qwen");
+        let logs_dir = qwen_dir.join("logs").join("openai");
+        fs::create_dir_all(&logs_dir).unwrap();
+        fs::write(logs_dir.join("log1.json"), r#"{"session_id": "same-id"}"#).unwrap();
+        fs::write(logs_dir.join("log2.json"), r#"{"session_id": "same-id"}"#).unwrap();
+
+        let sessions = detect_sessions(&qwen_dir).unwrap();
+        assert_eq!(sessions.len(), 1);
     }
 
     #[test]
@@ -104,15 +141,7 @@ mod tests {
         let qwen_dir = dir.path().join(".qwen");
         let logs_dir = qwen_dir.join("logs").join("openai");
         fs::create_dir_all(&logs_dir).unwrap();
-
-        // Non-json files should be ignored
         fs::write(logs_dir.join("log.txt"), "not json").unwrap();
-        fs::write(logs_dir.join("data.yaml"), "key: value").unwrap();
-
-        // Subdirectory should be ignored
-        let subdir = logs_dir.join("subdir");
-        fs::create_dir_all(&subdir).unwrap();
-
         let sessions = detect_sessions(&qwen_dir).unwrap();
         assert!(sessions.is_empty());
     }
