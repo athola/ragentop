@@ -93,43 +93,45 @@ mod tests {
     }
 
     #[test]
-    fn test_request_list_sessions_serde() {
+    fn test_request_list_sessions_serde() -> Result<(), Box<dyn std::error::Error>> {
         let req = Request::ListSessions;
-        let json = serde_json::to_string(&req).unwrap();
+        let json = serde_json::to_string(&req)?;
         assert!(json.contains("list_sessions"));
-        let parsed: Request = serde_json::from_str(&json).unwrap();
+        let parsed: Request = serde_json::from_str(&json)?;
         assert!(matches!(parsed, Request::ListSessions));
+        Ok(())
     }
 
     #[test]
-    fn test_request_get_metrics_serde() {
+    fn test_request_get_metrics_serde() -> Result<(), Box<dyn std::error::Error>> {
         let req = Request::GetMetrics {
             session_id: SessionId::new_unchecked("abc123"),
         };
-        let json = serde_json::to_string(&req).unwrap();
+        let json = serde_json::to_string(&req)?;
         assert!(json.contains("get_metrics"));
         assert!(json.contains("abc123"));
 
-        let parsed: Request = serde_json::from_str(&json).unwrap();
+        let parsed: Request = serde_json::from_str(&json)?;
         match parsed {
             Request::GetMetrics { session_id } => assert_eq!(session_id.as_str(), "abc123"),
-            _ => panic!("expected GetMetrics"),
+            _ => return Err("expected GetMetrics".into()),
         }
+        Ok(())
     }
 
     #[test]
-    fn test_request_get_history_serde() {
+    fn test_request_get_history_serde() -> Result<(), Box<dyn std::error::Error>> {
         let req = Request::GetHistory {
             session_id: SessionId::new_unchecked("sess-1"),
             depth: HistoryDepth::ToolCallsOnly,
             limit: 50,
         };
-        let json = serde_json::to_string(&req).unwrap();
+        let json = serde_json::to_string(&req)?;
         assert!(json.contains("get_history"));
         assert!(json.contains("tool_calls_only"));
         assert!(json.contains("\"limit\":50"));
 
-        let parsed: Request = serde_json::from_str(&json).unwrap();
+        let parsed: Request = serde_json::from_str(&json)?;
         match parsed {
             Request::GetHistory {
                 session_id,
@@ -140,12 +142,13 @@ mod tests {
                 assert_eq!(depth, HistoryDepth::ToolCallsOnly);
                 assert_eq!(limit, 50);
             }
-            _ => panic!("expected GetHistory"),
+            _ => return Err("expected GetHistory".into()),
         }
+        Ok(())
     }
 
     #[test]
-    fn test_response_metrics_serde() {
+    fn test_response_metrics_serde() -> Result<(), Box<dyn std::error::Error>> {
         let resp = Response::Metrics {
             session_id: SessionId::new_unchecked("sess-1"),
             metrics: SessionMetrics {
@@ -156,11 +159,11 @@ mod tests {
                 command_count: 42,
             },
         };
-        let json = serde_json::to_string(&resp).unwrap();
+        let json = serde_json::to_string(&resp)?;
         assert!(json.contains("metrics"));
         assert!(json.contains("5000"));
 
-        let parsed: Response = serde_json::from_str(&json).unwrap();
+        let parsed: Response = serde_json::from_str(&json)?;
         match parsed {
             Response::Metrics {
                 session_id,
@@ -169,20 +172,21 @@ mod tests {
                 assert_eq!(session_id.as_str(), "sess-1");
                 assert_eq!(metrics.token_count, 5000);
             }
-            _ => panic!("expected Metrics"),
+            _ => return Err("expected Metrics".into()),
         }
+        Ok(())
     }
 
     #[test]
-    fn test_response_history_serde() {
+    fn test_response_history_serde() -> Result<(), Box<dyn std::error::Error>> {
         let resp = Response::History {
             session_id: SessionId::new_unchecked("sess-1"),
             commands: vec![make_command("read"), make_command("write")],
         };
-        let json = serde_json::to_string(&resp).unwrap();
+        let json = serde_json::to_string(&resp)?;
         assert!(json.contains("history"));
 
-        let parsed: Response = serde_json::from_str(&json).unwrap();
+        let parsed: Response = serde_json::from_str(&json)?;
         match parsed {
             Response::History {
                 session_id,
@@ -191,28 +195,31 @@ mod tests {
                 assert_eq!(session_id.as_str(), "sess-1");
                 assert_eq!(commands.len(), 2);
             }
-            _ => panic!("expected History"),
+            _ => return Err("expected History".into()),
         }
+        Ok(())
     }
 
     #[test]
-    fn test_response_sessions_serde() {
+    fn test_response_sessions_serde() -> Result<(), Box<dyn std::error::Error>> {
         let resp = Response::Sessions {
             sessions: vec![make_session("s1")],
         };
-        let json = serde_json::to_string(&resp).unwrap();
-        let parsed: Response = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&resp)?;
+        let parsed: Response = serde_json::from_str(&json)?;
         assert!(matches!(parsed, Response::Sessions { .. }));
+        Ok(())
     }
 
     #[test]
-    fn test_response_error_serde() {
+    fn test_response_error_serde() -> Result<(), Box<dyn std::error::Error>> {
         let resp = Response::Error {
             message: "not found".to_string(),
         };
-        let json = serde_json::to_string(&resp).unwrap();
+        let json = serde_json::to_string(&resp)?;
         assert!(json.contains("error"));
         assert!(json.contains("not found"));
+        Ok(())
     }
 
     #[test]

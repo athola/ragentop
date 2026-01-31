@@ -10,33 +10,41 @@ use std::path::Path;
 use std::time::{Duration, SystemTime};
 
 #[derive(Deserialize)]
+#[non_exhaustive]
 struct QwenLogFile {
-    #[serde(default)]
-    usage: Option<Usage>,
     #[serde(default)]
     request: Option<Request>,
     #[serde(default)]
     timestamp: Option<f64>,
+    #[serde(default)]
+    usage: Option<Usage>,
 }
 
 #[derive(Deserialize)]
-#[allow(dead_code, clippy::struct_field_names)]
+#[non_exhaustive]
+#[expect(
+    dead_code,
+    clippy::struct_field_names,
+    reason = "Fields needed for serde deserialization"
+)]
 struct Usage {
     #[serde(default)]
-    prompt_tokens: u64,
-    #[serde(default)]
     completion_tokens: u64,
+    #[serde(default)]
+    prompt_tokens: u64,
     #[serde(default)]
     total_tokens: u64,
 }
 
 #[derive(Deserialize)]
+#[non_exhaustive]
 struct Request {
     #[serde(default)]
     tool_calls: Option<Vec<ToolCall>>,
 }
 
 #[derive(Deserialize)]
+#[non_exhaustive]
 struct ToolCall {
     #[serde(rename = "type", default)]
     call_type: Option<String>,
@@ -45,17 +53,19 @@ struct ToolCall {
 }
 
 #[derive(Deserialize)]
+#[non_exhaustive]
 struct FunctionCall {
     #[serde(default)]
-    name: Option<String>,
-    #[serde(default)]
     arguments: Option<String>,
+    #[serde(default)]
+    name: Option<String>,
 }
 
 /// Aggregates metrics from all Qwen log files in the logs directory.
 ///
 /// # Errors
 /// Returns an error if the filesystem cannot be read.
+#[inline]
 pub fn aggregate_metrics(config_dir: &Path) -> Result<SessionMetrics> {
     let logs_dir = config_dir.join("logs").join("openai");
     if !logs_dir.exists() {
@@ -65,16 +75,16 @@ pub fn aggregate_metrics(config_dir: &Path) -> Result<SessionMetrics> {
     let mut total_tokens: u64 = 0;
     let mut command_count: u64 = 0;
 
-    for entry in std::fs::read_dir(&logs_dir)? {
-        let entry = entry?;
-        let path = entry.path();
-        if path.extension().is_some_and(|e| e == "json") {
-            if let Ok(contents) = std::fs::read_to_string(&path) {
-                if let Ok(log) = serde_json::from_str::<QwenLogFile>(&contents) {
-                    if let Some(usage) = &log.usage {
+    for dir_entry in std::fs::read_dir(&logs_dir)? {
+        let dir_entry = dir_entry?;
+        let file_path = dir_entry.path();
+        if file_path.extension().is_some_and(|ext| ext == "json") {
+            if let Ok(contents) = std::fs::read_to_string(&file_path) {
+                if let Ok(log_file) = serde_json::from_str::<QwenLogFile>(&contents) {
+                    if let Some(usage) = &log_file.usage {
                         total_tokens += usage.total_tokens;
                     }
-                    if let Some(req) = &log.request {
+                    if let Some(req) = &log_file.request {
                         if let Some(tools) = &req.tool_calls {
                             command_count += tools.len() as u64;
                         }
@@ -92,6 +102,7 @@ pub fn aggregate_metrics(config_dir: &Path) -> Result<SessionMetrics> {
 ///
 /// # Errors
 /// Returns an error if the filesystem cannot be read.
+#[inline]
 pub fn parse_history(config_dir: &Path, limit: usize) -> Result<Vec<Command>> {
     let logs_dir = config_dir.join("logs").join("openai");
     if !logs_dir.exists() {
@@ -103,62 +114,64 @@ pub fn parse_history(config_dir: &Path, limit: usize) -> Result<Vec<Command>> {
     // Collect log files sorted by mtime (newest first)
     let mut entries: Vec<_> = std::fs::read_dir(&logs_dir)?
         .flatten()
-        .filter(|e| e.path().extension().is_some_and(|ext| ext == "json"))
+        .filter(|ent| ent.path().extension().is_some_and(|ext| ext == "json"))
         .collect();
-    entries.sort_by(|a, b| {
-        let ma = a
+    entries.sort_by(|left, right| {
+        let mtime_left = left
             .metadata()
-            .and_then(|m| m.modified())
+            .and_then(|meta| meta.modified())
             .unwrap_or(SystemTime::UNIX_EPOCH);
-        let mb = b
+        let mtime_right = right
             .metadata()
-            .and_then(|m| m.modified())
+            .and_then(|meta| meta.modified())
             .unwrap_or(SystemTime::UNIX_EPOCH);
-        mb.cmp(&ma)
+        mtime_right.cmp(&mtime_left)
     });
 
-    for entry in entries {
+    for dir_entry in entries {
         if commands.len() >= limit {
             break;
         }
-        let path = entry.path();
-        if let Ok(contents) = std::fs::read_to_string(&path) {
-            if let Ok(log) = serde_json::from_str::<QwenLogFile>(&contents) {
-                let timestamp = log.timestamp.map_or_else(
+        let file_path = dir_entry.path();
+        if let Ok(contents) = std::fs::read_to_string(&file_path) {
+            if let Ok(log_file) = serde_json::from_str::<QwenLogFile>(&contents) {
+                let timestamp = log_file.timestamp.map_or_else(
                     || {
-                        path.metadata()
-                            .and_then(|m| m.modified())
+                        file_path
+                            .metadata()
+                            .and_then(|meta| meta.modified())
                             .unwrap_or_else(|_| SystemTime::now())
                     },
-                    |ts| SystemTime::UNIX_EPOCH + Duration::from_secs_f64(ts),
+                    |ts_val| SystemTime::UNIX_EPOCH + Duration::from_secs_f64(ts_val),
                 );
 
-                if let Some(req) = &log.request {
+                if let Some(req) = &log_file.request {
                     if let Some(tool_calls) = &req.tool_calls {
-                        for tc in tool_calls {
+                        for tool_call in tool_calls {
                             if commands.len() >= limit {
                                 break;
                             }
-                            let tool = tc
+                            let tool = tool_call
                                 .function
                                 .as_ref()
-                                .and_then(|f| f.name.clone())
+                                .and_then(|func| func.name.clone())
                                 .unwrap_or_else(|| {
-                                    tc.call_type
+                                    tool_call
+                                        .call_type
                                         .clone()
-                                        .unwrap_or_else(|| "unknown".to_string())
+                                        .unwrap_or_else(|| "unknown".to_owned())
                                 });
-                            let args = tc
+                            let args = tool_call
                                 .function
                                 .as_ref()
-                                .and_then(|f| f.arguments.clone())
+                                .and_then(|func| func.arguments.clone())
                                 .unwrap_or_default();
                             commands.push(Command {
+                                args,
+                                result_summary: None,
+                                status: CommandStatus::Success,
                                 timestamp,
                                 tool,
-                                args,
-                                status: CommandStatus::Success,
-                                result_summary: None,
                             });
                         }
                     }
@@ -175,139 +188,128 @@ mod tests {
     use std::fs;
     use tempfile::tempdir;
 
-    fn make_log_file(dir: &Path, name: &str, content: &str) {
-        fs::write(dir.join(name), content).unwrap();
+    fn make_log_file(
+        dir_path: &Path,
+        name: &str,
+        content: &str,
+    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
+        fs::write(dir_path.join(name), content)?;
+        Ok(())
     }
 
     #[test]
-    fn test_aggregate_metrics_sums_tokens() {
-        let dir = tempdir().unwrap();
-        let qwen_dir = dir.path().join(".qwen");
+    fn test_aggregate_metrics_sums_tokens() -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let temp_dir = tempdir()?;
+        let qwen_dir = temp_dir.path().join(".qwen");
         let logs_dir = qwen_dir.join("logs").join("openai");
-        fs::create_dir_all(&logs_dir).unwrap();
+        fs::create_dir_all(&logs_dir)?;
 
         make_log_file(
             &logs_dir,
             "log1.json",
-            r#"{
-            "usage": {"prompt_tokens": 100, "completion_tokens": 50, "total_tokens": 150}
-        }"#,
-        );
+            r#"{"usage": {"prompt_tokens": 100, "completion_tokens": 50, "total_tokens": 150}}"#,
+        )?;
         make_log_file(
             &logs_dir,
             "log2.json",
-            r#"{
-            "usage": {"prompt_tokens": 200, "completion_tokens": 100, "total_tokens": 300}
-        }"#,
-        );
+            r#"{"usage": {"prompt_tokens": 200, "completion_tokens": 100, "total_tokens": 300}}"#,
+        )?;
 
-        let metrics = aggregate_metrics(&qwen_dir).unwrap();
+        let metrics = aggregate_metrics(&qwen_dir)?;
         assert_eq!(metrics.token_count, 450);
+        Ok(())
     }
 
     #[test]
-    fn test_aggregate_metrics_counts_tool_calls() {
-        let dir = tempdir().unwrap();
-        let qwen_dir = dir.path().join(".qwen");
+    fn test_aggregate_metrics_counts_tool_calls(
+    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let temp_dir = tempdir()?;
+        let qwen_dir = temp_dir.path().join(".qwen");
         let logs_dir = qwen_dir.join("logs").join("openai");
-        fs::create_dir_all(&logs_dir).unwrap();
+        fs::create_dir_all(&logs_dir)?;
 
         make_log_file(
             &logs_dir,
             "log1.json",
-            r#"{
-            "request": {
-                "tool_calls": [
-                    {"type": "function", "function": {"name": "bash", "arguments": "ls"}},
-                    {"type": "function", "function": {"name": "read", "arguments": "file.txt"}}
-                ]
-            }
-        }"#,
-        );
+            r#"{"request": {"tool_calls": [{"type": "function", "function": {"name": "bash", "arguments": "ls"}}, {"type": "function", "function": {"name": "read", "arguments": "file.txt"}}]}}"#,
+        )?;
 
-        let metrics = aggregate_metrics(&qwen_dir).unwrap();
+        let metrics = aggregate_metrics(&qwen_dir)?;
         assert_eq!(metrics.command_count, 2);
+        Ok(())
     }
 
     #[test]
-    fn test_aggregate_metrics_empty_dir() {
-        let dir = tempdir().unwrap();
-        let metrics = aggregate_metrics(dir.path()).unwrap();
+    fn test_aggregate_metrics_empty_dir() -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let temp_dir = tempdir()?;
+        let metrics = aggregate_metrics(temp_dir.path())?;
         assert_eq!(metrics.token_count, 0);
+        Ok(())
     }
 
     #[test]
-    fn test_parse_history_extracts_tool_calls() {
-        let dir = tempdir().unwrap();
-        let qwen_dir = dir.path().join(".qwen");
+    fn test_parse_history_extracts_tool_calls(
+    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let temp_dir = tempdir()?;
+        let qwen_dir = temp_dir.path().join(".qwen");
         let logs_dir = qwen_dir.join("logs").join("openai");
-        fs::create_dir_all(&logs_dir).unwrap();
+        fs::create_dir_all(&logs_dir)?;
 
         make_log_file(
             &logs_dir,
             "log1.json",
-            r#"{
-            "timestamp": 1706000000.0,
-            "request": {
-                "tool_calls": [
-                    {"type": "function", "function": {"name": "bash", "arguments": "ls -la"}}
-                ]
-            }
-        }"#,
-        );
+            r#"{"timestamp": 1706000000.0, "request": {"tool_calls": [{"type": "function", "function": {"name": "bash", "arguments": "ls -la"}}]}}"#,
+        )?;
 
-        let cmds = parse_history(&qwen_dir, 10).unwrap();
+        let cmds = parse_history(&qwen_dir, 10)?;
         assert_eq!(cmds.len(), 1);
         assert_eq!(cmds[0].tool, "bash");
         assert_eq!(cmds[0].args, "ls -la");
+        Ok(())
     }
 
     #[test]
-    fn test_parse_history_respects_limit() {
-        let dir = tempdir().unwrap();
-        let qwen_dir = dir.path().join(".qwen");
+    fn test_parse_history_respects_limit() -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let temp_dir = tempdir()?;
+        let qwen_dir = temp_dir.path().join(".qwen");
         let logs_dir = qwen_dir.join("logs").join("openai");
-        fs::create_dir_all(&logs_dir).unwrap();
+        fs::create_dir_all(&logs_dir)?;
 
         make_log_file(
             &logs_dir,
             "log1.json",
-            r#"{
-            "request": {
-                "tool_calls": [
-                    {"function": {"name": "a"}},
-                    {"function": {"name": "b"}},
-                    {"function": {"name": "c"}}
-                ]
-            }
-        }"#,
-        );
+            r#"{"request": {"tool_calls": [{"function": {"name": "a"}}, {"function": {"name": "b"}}, {"function": {"name": "c"}}]}}"#,
+        )?;
 
-        let cmds = parse_history(&qwen_dir, 2).unwrap();
+        let cmds = parse_history(&qwen_dir, 2)?;
         assert_eq!(cmds.len(), 2);
+        Ok(())
     }
 
     #[test]
-    fn test_parse_history_missing_dir() {
-        let dir = tempdir().unwrap();
-        let cmds = parse_history(dir.path(), 10).unwrap();
+    fn test_parse_history_missing_dir() -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let temp_dir = tempdir()?;
+        let cmds = parse_history(temp_dir.path(), 10)?;
         assert!(cmds.is_empty());
+        Ok(())
     }
 
     #[test]
-    fn test_aggregate_metrics_skips_malformed() {
-        let dir = tempdir().unwrap();
-        let qwen_dir = dir.path().join(".qwen");
+    fn test_aggregate_metrics_skips_malformed(
+    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let temp_dir = tempdir()?;
+        let qwen_dir = temp_dir.path().join(".qwen");
         let logs_dir = qwen_dir.join("logs").join("openai");
-        fs::create_dir_all(&logs_dir).unwrap();
-        make_log_file(&logs_dir, "bad.json", "not json {{{");
+        fs::create_dir_all(&logs_dir)?;
+        make_log_file(&logs_dir, "bad.json", "not json {{{")?;
         make_log_file(
             &logs_dir,
             "good.json",
             r#"{"usage": {"total_tokens": 100}}"#,
-        );
+        )?;
 
-        let metrics = aggregate_metrics(&qwen_dir).unwrap();
+        let metrics = aggregate_metrics(&qwen_dir)?;
         assert_eq!(metrics.token_count, 100);
+        Ok(())
     }
 }

@@ -2,6 +2,12 @@
 name = "ragentop-tui"
 version.workspace = true
 edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Terminal user interface for ragentop"
+readme = "README.md"
+keywords = ["agent", "monitoring", "ai"]
+categories = ["development-tools"]
 
 [dependencies]
 ragentop-core = { path = "../ragentop-core" }

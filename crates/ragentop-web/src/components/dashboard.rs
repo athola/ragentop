@@ -6,21 +6,22 @@ use super::session_detail::{SessionDetail, SessionDetails};
 use super::session_list::{SessionItem, SessionList};
 
 /// Main dashboard component with session list and detail panels.
+#[expect(clippy::must_use_candidate)] // Leptos components are used via view! macro
 #[component]
 pub fn Dashboard() -> impl IntoView {
     // Mock data for initial development
     let initial_sessions = vec![
         SessionItem {
-            id: "session-001".to_string(),
-            agent_type: "claude".to_string(),
-            status: "active".to_string(),
-            working_dir: Some("/home/user/project".to_string()),
+            id: "session-001".to_owned(),
+            agent_type: "claude".to_owned(),
+            status: "active".to_owned(),
+            working_dir: Some("/home/user/project".to_owned()),
         },
         SessionItem {
-            id: "session-002".to_string(),
-            agent_type: "codex".to_string(),
-            status: "idle".to_string(),
-            working_dir: Some("/home/user/other".to_string()),
+            id: "session-002".to_owned(),
+            agent_type: "codex".to_owned(),
+            status: "idle".to_owned(),
+            working_dir: Some("/home/user/other".to_owned()),
         },
     ];
 
@@ -37,7 +38,7 @@ pub fn Dashboard() -> impl IntoView {
                 .map(|s| SessionDetails {
                     id: s.id,
                     agent_type: s.agent_type,
-                    model: Some("claude-opus-4-5-20251101".to_string()),
+                    model: Some("claude-opus-4-5-20251101".to_owned()),
                     status: s.status,
                     working_dir: s.working_dir,
                     token_count: 15000,

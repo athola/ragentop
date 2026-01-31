@@ -24,7 +24,10 @@ pub enum AgentType {
 }
 
 impl std::fmt::Display for AgentType {
-    #[allow(deprecated)] // Glm variant retained for backwards compatibility
+    #[expect(
+        deprecated,
+        reason = "Glm variant retained for backwards compatibility"
+    )]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Claude => write!(f, "claude"),
@@ -235,6 +238,8 @@ impl SessionMetrics {
                 issues.push(MetricsValidationIssue::InvalidCost(cost));
             } else if cost < 0.0 {
                 issues.push(MetricsValidationIssue::NegativeCost(cost));
+            } else {
+                // Valid cost - no issue
             }
         }
 
@@ -243,6 +248,8 @@ impl SessionMetrics {
                 issues.push(MetricsValidationIssue::InvalidCpu(cpu));
             } else if !(0.0..=100.0).contains(&cpu) {
                 issues.push(MetricsValidationIssue::CpuOutOfRange(cpu));
+            } else {
+                // Valid CPU - no issue
             }
         }
 
@@ -319,18 +326,20 @@ mod tests {
     }
 
     #[test]
-    fn test_agent_type_serde() {
-        let json = serde_json::to_string(&AgentType::Claude).unwrap();
+    fn test_agent_type_serde() -> Result<(), Box<dyn std::error::Error>> {
+        let json = serde_json::to_string(&AgentType::Claude)?;
         assert_eq!(json, "\"claude\"");
-        let parsed: AgentType = serde_json::from_str("\"gemini\"").unwrap();
+        let parsed: AgentType = serde_json::from_str("\"gemini\"")?;
         assert_eq!(parsed, AgentType::Gemini);
+        Ok(())
     }
 
     #[test]
-    fn test_session_id_valid() {
-        let id = SessionId::new("session-123").unwrap();
+    fn test_session_id_valid() -> Result<(), Box<dyn std::error::Error>> {
+        let id = SessionId::new("session-123")?;
         assert_eq!(id.as_str(), "session-123");
         assert!(SessionId::new("abc_DEF-123").is_ok());
+        Ok(())
     }
 
     #[test]
@@ -342,10 +351,11 @@ mod tests {
     }
 
     #[test]
-    fn test_session_id_boundary_255_chars_valid() {
+    fn test_session_id_boundary_255_chars_valid() -> Result<(), Box<dyn std::error::Error>> {
         let id_255 = "a".repeat(255);
         assert!(SessionId::new(&id_255).is_ok());
-        assert_eq!(SessionId::new(&id_255).unwrap().as_str().len(), 255);
+        assert_eq!(SessionId::new(&id_255)?.as_str().len(), 255);
+        Ok(())
     }
 
     #[test]

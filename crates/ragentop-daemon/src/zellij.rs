@@ -129,21 +129,23 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_parse_pane_line() {
+    fn test_parse_pane_line() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let line = r#"pane id=1 name="editor" focus=true"#;
-        let pane = parse_pane_line(line).unwrap();
+        let pane = parse_pane_line(line).ok_or("failed to parse pane")?;
         assert_eq!(pane.id, "1");
         assert_eq!(pane.title, "editor");
         assert!(pane.active);
+        Ok(())
     }
 
     #[test]
-    fn test_parse_pane_line_no_focus() {
+    fn test_parse_pane_line_no_focus() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let line = r#"pane id=2 name="terminal""#;
-        let pane = parse_pane_line(line).unwrap();
+        let pane = parse_pane_line(line).ok_or("failed to parse pane")?;
         assert_eq!(pane.id, "2");
         assert_eq!(pane.title, "terminal");
         assert!(!pane.active);
+        Ok(())
     }
 
     #[test]

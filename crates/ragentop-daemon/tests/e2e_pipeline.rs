@@ -4,8 +4,8 @@
 
 use ragentop_core::{
     dag::{DagStore, StateNode},
-    AdapterCapabilities, AgentAdapter, AgentSession, AgentType, Command, CommandStatus,
-    HistoryDepth, Request, Response, SessionId, SessionMetrics, SessionStatus,
+    Adapter, AgentSession, AgentType, Capabilities, Command, CommandStatus, HistoryDepth, Request,
+    Response, SessionId, SessionMetrics, SessionStatus,
 };
 use ragentop_daemon::{session::SessionTracker, SledDagStore};
 use std::path::PathBuf;
@@ -24,7 +24,7 @@ impl MockClaudeAdapter {
     }
 }
 
-impl AgentAdapter for MockClaudeAdapter {
+impl Adapter for MockClaudeAdapter {
     fn agent_type(&self) -> AgentType {
         AgentType::Claude
     }
@@ -71,14 +71,12 @@ impl AgentAdapter for MockClaudeAdapter {
         ])
     }
 
-    fn capabilities(&self) -> AdapterCapabilities {
-        AdapterCapabilities {
-            tokens: true,
-            cost: true,
-            commands: true,
-            model_info: true,
-            session_replay: false,
-        }
+    fn capabilities(&self) -> Capabilities {
+        Capabilities::new()
+            .with_tokens(true)
+            .with_cost(true)
+            .with_commands(true)
+            .with_model_info(true)
     }
 }
 
@@ -98,11 +96,11 @@ fn make_session(id: &str) -> AgentSession {
 
 /// Full pipeline: adapter detects → tracker collects → store persists → protocol queries.
 #[test]
-fn test_full_pipeline_adapter_to_protocol() {
+fn test_full_pipeline_adapter_to_protocol() -> Result<(), Box<dyn std::error::Error>> {
     // 1. Adapter detects sessions
     let adapter =
         MockClaudeAdapter::with_sessions(vec![make_session("sess-001"), make_session("sess-002")]);
-    let detected = adapter.detect_sessions().expect("detect sessions");
+    let detected = adapter.detect_sessions()?;
     assert_eq!(detected.len(), 2);
 
     // 2. SessionTracker collects them
@@ -114,36 +112,34 @@ fn test_full_pipeline_adapter_to_protocol() {
     assert!(tracker.get(&SessionId::new_unchecked("sess-001")).is_some());
 
     // 3. DAG store persists command history as state nodes
-    let tmp = TempDir::new().expect("create temp dir");
-    let store = SledDagStore::open(tmp.path()).expect("open store");
+    let tmp = TempDir::new()?;
+    let store = SledDagStore::open(tmp.path())?;
 
-    let commands = adapter
-        .get_command_history(
-            &SessionId::new_unchecked("sess-001"),
-            HistoryDepth::default(),
-            10,
-        )
-        .expect("get history");
+    let commands = adapter.get_command_history(
+        &SessionId::new_unchecked("sess-001"),
+        HistoryDepth::default(),
+        10,
+    )?;
     assert_eq!(commands.len(), 2);
 
     let node = StateNode::new(commands, None);
-    let hash = store.store(&node).expect("store node");
+    let hash = store.store(&node)?;
 
-    let loaded = store.load(&hash).expect("load").expect("node exists");
+    let loaded = store.load(&hash)?.ok_or("node should exist")?;
     assert_eq!(loaded.commands.len(), 2);
     assert_eq!(loaded.commands[0].tool, "Read");
 
     // 4. Protocol round-trip: serialize request, build response from tracker
     let request = Request::ListSessions;
-    let json = serde_json::to_string(&request).expect("serialize request");
-    let parsed: Request = serde_json::from_str(&json).expect("parse request");
+    let json = serde_json::to_string(&request)?;
+    let parsed: Request = serde_json::from_str(&json)?;
     assert!(matches!(parsed, Request::ListSessions));
 
     // Build response from tracker data
     let sessions: Vec<AgentSession> = tracker.all().into_iter().cloned().collect();
     let response = Response::Sessions { sessions };
-    let resp_json = serde_json::to_string(&response).expect("serialize response");
-    let parsed_resp: Response = serde_json::from_str(&resp_json).expect("parse response");
+    let resp_json = serde_json::to_string(&response)?;
+    let parsed_resp: Response = serde_json::from_str(&resp_json)?;
 
     match parsed_resp {
         Response::Sessions { sessions } => {
@@ -152,17 +148,16 @@ fn test_full_pipeline_adapter_to_protocol() {
             assert!(ids.contains(&"sess-001"));
             assert!(ids.contains(&"sess-002"));
         }
-        _ => panic!("expected Sessions response"),
+        _ => return Err("expected Sessions response".into()),
     }
+    Ok(())
 }
 
 /// Verify metrics polling through the adapter and protocol serialization.
 #[test]
-fn test_metrics_pipeline() {
+fn test_metrics_pipeline() -> Result<(), Box<dyn std::error::Error>> {
     let adapter = MockClaudeAdapter::with_sessions(vec![make_session("sess-m1")]);
-    let metrics = adapter
-        .poll_metrics(&SessionId::new_unchecked("sess-m1"))
-        .expect("poll metrics");
+    let metrics = adapter.poll_metrics(&SessionId::new_unchecked("sess-m1"))?;
 
     assert_eq!(metrics.token_count, 1500);
     assert_eq!(metrics.cost_usd, Some(0.05));
@@ -173,8 +168,8 @@ fn test_metrics_pipeline() {
         session_id: SessionId::new_unchecked("sess-m1"),
         metrics,
     };
-    let json = serde_json::to_string(&response).expect("serialize");
-    let parsed: Response = serde_json::from_str(&json).expect("parse");
+    let json = serde_json::to_string(&response)?;
+    let parsed: Response = serde_json::from_str(&json)?;
 
     match parsed {
         Response::Metrics {
@@ -184,15 +179,16 @@ fn test_metrics_pipeline() {
             assert_eq!(session_id.as_str(), "sess-m1");
             assert_eq!(metrics.command_count, 7);
         }
-        _ => panic!("expected Metrics response"),
+        _ => return Err("expected Metrics response".into()),
     }
+    Ok(())
 }
 
 /// DAG store persists and retrieves chained session snapshots.
 #[test]
-fn test_dag_store_history_chain() {
-    let tmp = TempDir::new().expect("create temp dir");
-    let store = SledDagStore::open(tmp.path()).expect("open store");
+fn test_dag_store_history_chain() -> Result<(), Box<dyn std::error::Error>> {
+    let tmp = TempDir::new()?;
+    let store = SledDagStore::open(tmp.path())?;
 
     let cmd = |tool: &str| Command {
         timestamp: SystemTime::UNIX_EPOCH,
@@ -203,13 +199,13 @@ fn test_dag_store_history_chain() {
     };
 
     let root = StateNode::new(vec![cmd("Bash")], None);
-    let root_hash = store.store(&root).expect("store root");
+    let root_hash = store.store(&root)?;
 
     let snap2 = StateNode::new(vec![cmd("Read"), cmd("Edit")], Some(root_hash));
-    let snap2_hash = store.store(&snap2).expect("store snap2");
+    let snap2_hash = store.store(&snap2)?;
 
     let snap3 = StateNode::new(vec![cmd("Write")], Some(snap2_hash));
-    let snap3_hash = store.store(&snap3).expect("store snap3");
+    let snap3_hash = store.store(&snap3)?;
 
     // Walk full history from latest
     let history: Vec<_> = store.walk_history(&snap3_hash).collect();
@@ -217,11 +213,12 @@ fn test_dag_store_history_chain() {
     assert_eq!(history[0].commands[0].tool, "Write");
     assert_eq!(history[1].commands[0].tool, "Read");
     assert_eq!(history[2].commands[0].tool, "Bash");
+    Ok(())
 }
 
 /// Adapter registry collects and iterates adapters.
 #[test]
-fn test_registry_with_mock_adapter() {
+fn test_registry_with_mock_adapter() -> Result<(), Box<dyn std::error::Error>> {
     use ragentop_daemon::registry::AdapterRegistry;
 
     let mut registry = AdapterRegistry::new();
@@ -229,7 +226,8 @@ fn test_registry_with_mock_adapter() {
     registry.register(adapter);
 
     assert_eq!(registry.adapters().len(), 1);
-    let detected = registry.adapters()[0].detect_sessions().expect("detect");
+    let detected = registry.adapters()[0].detect_sessions()?;
     assert_eq!(detected.len(), 1);
     assert_eq!(detected[0].id.as_str(), "s1");
+    Ok(())
 }

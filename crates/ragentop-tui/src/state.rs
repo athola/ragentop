@@ -203,14 +203,18 @@ mod tests {
     }
 
     #[test]
-    fn selected_session_returns_correct() {
+    fn selected_session_returns_correct() -> Result<(), Box<dyn std::error::Error>> {
         let mut s = AppState::new();
         s.update_sessions(vec![make_session("a"), make_session("b")]);
         s.navigate_down();
         assert_eq!(
-            s.selected_session().unwrap().session_name.as_deref(),
+            s.selected_session()
+                .ok_or("no session selected")?
+                .session_name
+                .as_deref(),
             Some("b")
         );
+        Ok(())
     }
 
     #[test]

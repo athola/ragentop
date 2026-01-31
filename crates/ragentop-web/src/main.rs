@@ -4,14 +4,15 @@ use axum::{response::Html, routing::get, Router};
 use ragentop_web::app::render_app;
 
 #[tokio::main]
-async fn main() {
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let addr = std::net::SocketAddr::from(([127, 0, 0, 1], 3000));
 
     let app = Router::new().route("/", get(index));
 
-    let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
+    let listener = tokio::net::TcpListener::bind(&addr).await?;
     println!("listening on http://{}", &addr);
-    axum::serve(listener, app).await.unwrap();
+    axum::serve(listener, app).await?;
+    Ok(())
 }
 
 async fn index() -> Html<String> {

@@ -2,6 +2,12 @@
 name = "ragentop-daemon"
 version.workspace = true
 edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Background daemon for collecting agent metrics"
+readme = "README.md"
+keywords = ["agent", "monitoring", "ai"]
+categories = ["development-tools"]
 
 [dependencies]
 ragentop-core = { path = "../ragentop-core" }

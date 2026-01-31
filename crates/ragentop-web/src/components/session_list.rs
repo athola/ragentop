@@ -12,6 +12,7 @@ pub struct SessionItem {
 }
 
 /// Component displaying a list of agent sessions.
+#[expect(clippy::must_use_candidate)] // Leptos components are used via view! macro
 #[component]
 pub fn SessionList(
     /// List of sessions to display.

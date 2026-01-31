@@ -61,9 +61,12 @@ mod tests {
 
     #[test]
     fn from_json_error() {
-        let json_err = serde_json::from_str::<serde_json::Value>("{{bad").unwrap_err();
-        let err: Error = json_err.into();
-        assert!(err.to_string().starts_with("JSON error:"));
+        let result = serde_json::from_str::<serde_json::Value>("{{bad");
+        assert!(result.is_err());
+        if let Err(json_err) = result {
+            let err: Error = json_err.into();
+            assert!(err.to_string().starts_with("JSON error:"));
+        }
     }
 
     #[test]

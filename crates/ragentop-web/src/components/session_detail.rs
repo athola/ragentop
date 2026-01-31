@@ -16,6 +16,7 @@ pub struct SessionDetails {
 }
 
 /// Component displaying detailed information about a selected session.
+#[expect(clippy::must_use_candidate)] // Leptos components are used via view! macro
 #[component]
 pub fn SessionDetail(
     /// The session details to display, None if no session selected.
@@ -35,7 +36,7 @@ pub fn SessionDetail(
                             <dd>{details.agent_type}</dd>
 
                             <dt>"Model"</dt>
-                            <dd>{details.model.unwrap_or_else(|| "N/A".to_string())}</dd>
+                            <dd>{details.model.unwrap_or_else(|| "N/A".to_owned())}</dd>
 
                             <dt>"Status"</dt>
                             <dd class=format!("session-detail__status--{}", details.status)>
@@ -43,7 +44,7 @@ pub fn SessionDetail(
                             </dd>
 
                             <dt>"Working Directory"</dt>
-                            <dd>{details.working_dir.unwrap_or_else(|| "N/A".to_string())}</dd>
+                            <dd>{details.working_dir.unwrap_or_else(|| "N/A".to_owned())}</dd>
 
                             <dt>"Tokens"</dt>
                             <dd>{details.token_count.to_string()}</dd>
@@ -51,7 +52,7 @@ pub fn SessionDetail(
                             <dt>"Cost"</dt>
                             <dd>{
                                 details.cost_usd
-                                    .map_or_else(|| "N/A".to_string(), |c| format!("${c:.4}"))
+                                    .map_or_else(|| "N/A".to_owned(), |c| format!("${c:.4}"))
                             }</dd>
 
                             <dt>"Commands"</dt>

@@ -156,135 +156,147 @@ mod tests {
     use tempfile::tempdir;
 
     #[test]
-    fn test_detect_sessions_finds_codex_sessions() {
-        let dir = tempdir().unwrap();
+    fn test_detect_sessions_finds_codex_sessions(
+    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let dir = tempdir()?;
         let codex_dir = dir.path().join(".codex");
         let sessions_dir = codex_dir.join("sessions");
-        fs::create_dir_all(&sessions_dir).unwrap();
+        fs::create_dir_all(&sessions_dir)?;
         fs::write(
             sessions_dir.join("abc123.json"),
             r#"{"id": "abc123", "model": "gpt-4o", "projectPath": "/home/user/project"}"#,
-        )
-        .unwrap();
+        )?;
 
-        let sessions = detect_sessions(&codex_dir).unwrap();
+        let sessions = detect_sessions(&codex_dir)?;
         assert_eq!(sessions.len(), 1);
         assert_eq!(sessions[0].id.as_str(), "abc123");
         assert_eq!(sessions[0].model.as_deref(), Some("gpt-4o"));
+        Ok(())
     }
 
     #[test]
-    fn test_detect_sessions_empty_when_no_sessions_dir() {
-        let dir = tempdir().unwrap();
+    fn test_detect_sessions_empty_when_no_sessions_dir(
+    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let dir = tempdir()?;
         let codex_dir = dir.path().join(".codex");
-        fs::create_dir_all(&codex_dir).unwrap();
-        let sessions = detect_sessions(&codex_dir).unwrap();
+        fs::create_dir_all(&codex_dir)?;
+        let sessions = detect_sessions(&codex_dir)?;
         assert!(sessions.is_empty());
+        Ok(())
     }
 
     #[test]
-    fn test_detect_sessions_uses_filename_as_fallback_id() {
-        let dir = tempdir().unwrap();
+    fn test_detect_sessions_uses_filename_as_fallback_id(
+    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let dir = tempdir()?;
         let codex_dir = dir.path().join(".codex");
         let sessions_dir = codex_dir.join("sessions");
-        fs::create_dir_all(&sessions_dir).unwrap();
+        fs::create_dir_all(&sessions_dir)?;
         fs::write(
             sessions_dir.join("my-session.json"),
             r#"{"model": "gpt-4o"}"#,
-        )
-        .unwrap();
-        let sessions = detect_sessions(&codex_dir).unwrap();
+        )?;
+        let sessions = detect_sessions(&codex_dir)?;
         assert_eq!(sessions[0].id.as_str(), "my-session");
+        Ok(())
     }
 
     #[test]
-    fn test_detect_sessions_skips_malformed_json() {
-        let dir = tempdir().unwrap();
+    fn test_detect_sessions_skips_malformed_json(
+    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let dir = tempdir()?;
         let codex_dir = dir.path().join(".codex");
         let sessions_dir = codex_dir.join("sessions");
-        fs::create_dir_all(&sessions_dir).unwrap();
-        fs::write(sessions_dir.join("bad.json"), "not valid json {{{").unwrap();
-        let sessions = detect_sessions(&codex_dir).unwrap();
+        fs::create_dir_all(&sessions_dir)?;
+        fs::write(sessions_dir.join("bad.json"), "not valid json {{{")?;
+        let sessions = detect_sessions(&codex_dir)?;
         assert!(sessions.is_empty());
+        Ok(())
     }
 
     #[test]
-    fn test_detect_sessions_ignores_non_json_files() {
-        let dir = tempdir().unwrap();
+    fn test_detect_sessions_ignores_non_json_files(
+    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let dir = tempdir()?;
         let codex_dir = dir.path().join(".codex");
         let sessions_dir = codex_dir.join("sessions");
-        fs::create_dir_all(&sessions_dir).unwrap();
-        fs::write(sessions_dir.join("readme.txt"), "text file").unwrap();
-        let sessions = detect_sessions(&codex_dir).unwrap();
+        fs::create_dir_all(&sessions_dir)?;
+        fs::write(sessions_dir.join("readme.txt"), "text file")?;
+        let sessions = detect_sessions(&codex_dir)?;
         assert!(sessions.is_empty());
+        Ok(())
     }
 
     #[test]
-    fn test_parse_history_returns_commands() {
-        let dir = tempdir().unwrap();
+    fn test_parse_history_returns_commands() -> std::result::Result<(), Box<dyn std::error::Error>>
+    {
+        let dir = tempdir()?;
         let codex_dir = dir.path().join(".codex");
-        fs::create_dir_all(&codex_dir).unwrap();
+        fs::create_dir_all(&codex_dir)?;
         fs::write(
             codex_dir.join("history.jsonl"),
             r#"{"tool": "bash", "args": "ls -la", "status": "success", "timestamp": 1706000000.0}
 {"tool": "write", "args": "file.txt", "status": "success", "timestamp": 1706000001.0}
 "#,
-        )
-        .unwrap();
+        )?;
 
-        let cmds = parse_history(&codex_dir, 10).unwrap();
+        let cmds = parse_history(&codex_dir, 10)?;
         assert_eq!(cmds.len(), 2);
         // Reversed order (most recent first)
         assert_eq!(cmds[0].tool, "write");
         assert_eq!(cmds[1].tool, "bash");
+        Ok(())
     }
 
     #[test]
-    fn test_parse_history_respects_limit() {
-        let dir = tempdir().unwrap();
+    fn test_parse_history_respects_limit() -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let dir = tempdir()?;
         let codex_dir = dir.path().join(".codex");
-        fs::create_dir_all(&codex_dir).unwrap();
+        fs::create_dir_all(&codex_dir)?;
         fs::write(
             codex_dir.join("history.jsonl"),
             r#"{"tool": "a"}
 {"tool": "b"}
 {"tool": "c"}
 "#,
-        )
-        .unwrap();
+        )?;
 
-        let cmds = parse_history(&codex_dir, 2).unwrap();
+        let cmds = parse_history(&codex_dir, 2)?;
         assert_eq!(cmds.len(), 2);
+        Ok(())
     }
 
     #[test]
-    fn test_parse_history_missing_file() {
-        let dir = tempdir().unwrap();
-        let cmds = parse_history(dir.path(), 10).unwrap();
+    fn test_parse_history_missing_file() -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let dir = tempdir()?;
+        let cmds = parse_history(dir.path(), 10)?;
         assert!(cmds.is_empty());
+        Ok(())
     }
 
     #[test]
-    fn test_parse_history_skips_blank_lines() {
-        let dir = tempdir().unwrap();
+    fn test_parse_history_skips_blank_lines() -> std::result::Result<(), Box<dyn std::error::Error>>
+    {
+        let dir = tempdir()?;
         let codex_dir = dir.path().join(".codex");
-        fs::create_dir_all(&codex_dir).unwrap();
+        fs::create_dir_all(&codex_dir)?;
         fs::write(
             codex_dir.join("history.jsonl"),
             "\n{\"tool\": \"bash\"}\n\n",
-        )
-        .unwrap();
+        )?;
 
-        let cmds = parse_history(&codex_dir, 10).unwrap();
+        let cmds = parse_history(&codex_dir, 10)?;
         assert_eq!(cmds.len(), 1);
+        Ok(())
     }
 
     #[test]
-    fn test_is_recently_modified_true() {
-        let dir = tempdir().unwrap();
+    fn test_is_recently_modified_true() -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let dir = tempdir()?;
         let file = dir.path().join("recent");
-        fs::write(&file, "data").unwrap();
+        fs::write(&file, "data")?;
         assert!(is_recently_modified(&file, Duration::from_secs(60)));
+        Ok(())
     }
 
     #[test]

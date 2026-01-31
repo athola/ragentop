@@ -89,60 +89,69 @@ mod tests {
     use tempfile::tempdir;
 
     #[test]
-    fn test_detect_sessions_finds_qwen_sessions() {
-        let dir = tempdir().unwrap();
+    fn test_detect_sessions_finds_qwen_sessions(
+    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let dir = tempdir()?;
         let qwen_dir = dir.path().join(".qwen");
         let logs_dir = qwen_dir.join("logs").join("openai");
-        fs::create_dir_all(&logs_dir).unwrap();
+        fs::create_dir_all(&logs_dir)?;
         fs::write(
             logs_dir.join("log1.json"),
             r#"{"session_id": "qwen-123", "model": "qwen2.5-coder"}"#,
-        )
-        .unwrap();
+        )?;
 
-        let sessions = detect_sessions(&qwen_dir).unwrap();
+        let sessions = detect_sessions(&qwen_dir)?;
         assert_eq!(sessions.len(), 1);
         assert_eq!(sessions[0].id.as_str(), "qwen-123");
+        Ok(())
     }
 
     #[test]
-    fn test_detect_sessions_empty_when_no_logs() {
-        let dir = tempdir().unwrap();
+    fn test_detect_sessions_empty_when_no_logs(
+    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let dir = tempdir()?;
         let qwen_dir = dir.path().join(".qwen");
-        fs::create_dir_all(&qwen_dir).unwrap();
-        let sessions = detect_sessions(&qwen_dir).unwrap();
+        fs::create_dir_all(&qwen_dir)?;
+        let sessions = detect_sessions(&qwen_dir)?;
         assert!(sessions.is_empty());
+        Ok(())
     }
 
     #[test]
-    fn test_detect_sessions_nonexistent_returns_empty() {
-        let dir = tempdir().unwrap();
+    fn test_detect_sessions_nonexistent_returns_empty(
+    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let dir = tempdir()?;
         let nonexistent = dir.path().join("does-not-exist");
-        let sessions = detect_sessions(&nonexistent).unwrap();
+        let sessions = detect_sessions(&nonexistent)?;
         assert!(sessions.is_empty());
+        Ok(())
     }
 
     #[test]
-    fn test_detect_sessions_deduplicates_by_session_id() {
-        let dir = tempdir().unwrap();
+    fn test_detect_sessions_deduplicates_by_session_id(
+    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let dir = tempdir()?;
         let qwen_dir = dir.path().join(".qwen");
         let logs_dir = qwen_dir.join("logs").join("openai");
-        fs::create_dir_all(&logs_dir).unwrap();
-        fs::write(logs_dir.join("log1.json"), r#"{"session_id": "same-id"}"#).unwrap();
-        fs::write(logs_dir.join("log2.json"), r#"{"session_id": "same-id"}"#).unwrap();
+        fs::create_dir_all(&logs_dir)?;
+        fs::write(logs_dir.join("log1.json"), r#"{"session_id": "same-id"}"#)?;
+        fs::write(logs_dir.join("log2.json"), r#"{"session_id": "same-id"}"#)?;
 
-        let sessions = detect_sessions(&qwen_dir).unwrap();
+        let sessions = detect_sessions(&qwen_dir)?;
         assert_eq!(sessions.len(), 1);
+        Ok(())
     }
 
     #[test]
-    fn test_detect_sessions_ignores_non_target_files() {
-        let dir = tempdir().unwrap();
+    fn test_detect_sessions_ignores_non_target_files(
+    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let dir = tempdir()?;
         let qwen_dir = dir.path().join(".qwen");
         let logs_dir = qwen_dir.join("logs").join("openai");
-        fs::create_dir_all(&logs_dir).unwrap();
-        fs::write(logs_dir.join("log.txt"), "not json").unwrap();
-        let sessions = detect_sessions(&qwen_dir).unwrap();
+        fs::create_dir_all(&logs_dir)?;
+        fs::write(logs_dir.join("log.txt"), "not json")?;
+        let sessions = detect_sessions(&qwen_dir)?;
         assert!(sessions.is_empty());
+        Ok(())
     }
 }

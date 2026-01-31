@@ -109,91 +109,104 @@ mod tests {
     use tempfile::tempdir;
 
     #[test]
-    fn test_detect_sessions_finds_gemini_sessions() {
-        let dir = tempdir().unwrap();
+    fn test_detect_sessions_finds_gemini_sessions(
+    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let dir = tempdir()?;
         let gemini_dir = dir.path().join(".gemini");
         let session_dir = gemini_dir.join("tmp").join("abc123hash");
-        fs::create_dir_all(&session_dir).unwrap();
-        fs::write(session_dir.join("shell_history"), "ls\ncat file.txt\n").unwrap();
+        fs::create_dir_all(&session_dir)?;
+        fs::write(session_dir.join("shell_history"), "ls\ncat file.txt\n")?;
 
-        let sessions = detect_sessions(&gemini_dir).unwrap();
+        let sessions = detect_sessions(&gemini_dir)?;
         assert_eq!(sessions.len(), 1);
         assert_eq!(sessions[0].id.as_str(), "abc123hash");
         assert_eq!(sessions[0].agent_type, AgentType::Gemini);
+        Ok(())
     }
 
     #[test]
-    fn test_detect_sessions_empty_when_no_tmp_dir() {
-        let dir = tempdir().unwrap();
+    fn test_detect_sessions_empty_when_no_tmp_dir(
+    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let dir = tempdir()?;
         let gemini_dir = dir.path().join(".gemini");
-        fs::create_dir_all(&gemini_dir).unwrap();
-        let sessions = detect_sessions(&gemini_dir).unwrap();
+        fs::create_dir_all(&gemini_dir)?;
+        let sessions = detect_sessions(&gemini_dir)?;
         assert!(sessions.is_empty());
+        Ok(())
     }
 
     #[test]
-    fn test_detect_sessions_ignores_dirs_without_history() {
-        let dir = tempdir().unwrap();
+    fn test_detect_sessions_ignores_dirs_without_history(
+    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let dir = tempdir()?;
         let gemini_dir = dir.path().join(".gemini");
         let session_dir = gemini_dir.join("tmp").join("nohist");
-        fs::create_dir_all(&session_dir).unwrap();
-        let sessions = detect_sessions(&gemini_dir).unwrap();
+        fs::create_dir_all(&session_dir)?;
+        let sessions = detect_sessions(&gemini_dir)?;
         assert!(sessions.is_empty());
+        Ok(())
     }
 
     #[test]
-    fn test_detect_sessions_ignores_files_in_tmp() {
-        let dir = tempdir().unwrap();
+    fn test_detect_sessions_ignores_files_in_tmp(
+    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let dir = tempdir()?;
         let gemini_dir = dir.path().join(".gemini");
         let tmp_dir = gemini_dir.join("tmp");
-        fs::create_dir_all(&tmp_dir).unwrap();
-        fs::write(tmp_dir.join("some_file.txt"), "not a dir").unwrap();
-        let sessions = detect_sessions(&gemini_dir).unwrap();
+        fs::create_dir_all(&tmp_dir)?;
+        fs::write(tmp_dir.join("some_file.txt"), "not a dir")?;
+        let sessions = detect_sessions(&gemini_dir)?;
         assert!(sessions.is_empty());
+        Ok(())
     }
 
     #[test]
-    fn test_detect_sessions_nonexistent_returns_empty() {
-        let dir = tempdir().unwrap();
+    fn test_detect_sessions_nonexistent_returns_empty(
+    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let dir = tempdir()?;
         let nonexistent = dir.path().join("does-not-exist");
-        let sessions = detect_sessions(&nonexistent).unwrap();
+        let sessions = detect_sessions(&nonexistent)?;
         assert!(sessions.is_empty());
+        Ok(())
     }
 
     #[test]
-    fn test_parse_history_returns_commands() {
-        let dir = tempdir().unwrap();
+    fn test_parse_history_returns_commands() -> std::result::Result<(), Box<dyn std::error::Error>>
+    {
+        let dir = tempdir()?;
         let gemini_dir = dir.path().join(".gemini");
         let session_dir = gemini_dir.join("tmp").join("sess1");
-        fs::create_dir_all(&session_dir).unwrap();
+        fs::create_dir_all(&session_dir)?;
         fs::write(
             session_dir.join("shell_history"),
             "ls -la\ncat foo.txt\npwd\n",
-        )
-        .unwrap();
+        )?;
 
-        let cmds = parse_history(&gemini_dir, "sess1", 10).unwrap();
+        let cmds = parse_history(&gemini_dir, "sess1", 10)?;
         assert_eq!(cmds.len(), 3);
         assert_eq!(cmds[0].args, "pwd");
         assert_eq!(cmds[2].args, "ls -la");
+        Ok(())
     }
 
     #[test]
-    fn test_parse_history_respects_limit() {
-        let dir = tempdir().unwrap();
+    fn test_parse_history_respects_limit() -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let dir = tempdir()?;
         let gemini_dir = dir.path().join(".gemini");
         let session_dir = gemini_dir.join("tmp").join("sess1");
-        fs::create_dir_all(&session_dir).unwrap();
-        fs::write(session_dir.join("shell_history"), "a\nb\nc\nd\n").unwrap();
+        fs::create_dir_all(&session_dir)?;
+        fs::write(session_dir.join("shell_history"), "a\nb\nc\nd\n")?;
 
-        let cmds = parse_history(&gemini_dir, "sess1", 2).unwrap();
+        let cmds = parse_history(&gemini_dir, "sess1", 2)?;
         assert_eq!(cmds.len(), 2);
+        Ok(())
     }
 
     #[test]
-    fn test_parse_history_missing_file() {
-        let dir = tempdir().unwrap();
-        let cmds = parse_history(dir.path(), "nonexistent", 10).unwrap();
+    fn test_parse_history_missing_file() -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let dir = tempdir()?;
+        let cmds = parse_history(dir.path(), "nonexistent", 10)?;
         assert!(cmds.is_empty());
+        Ok(())
     }
 }

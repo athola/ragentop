@@ -1,4 +1,5 @@
 //! Background daemon for collecting agent metrics.
+
 pub mod config;
 pub mod protocol;
 pub mod registry;

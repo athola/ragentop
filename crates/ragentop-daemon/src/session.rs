@@ -105,7 +105,7 @@ mod tests {
     }
 
     #[test]
-    fn test_tracker_update_replaces_existing() {
+    fn test_tracker_update_replaces_existing() -> Result<(), Box<dyn std::error::Error>> {
         let mut tracker = SessionTracker::new();
         let mut session = make_session("s1");
         session.model = Some("opus".to_string());
@@ -117,8 +117,11 @@ mod tests {
 
         // Should still have only one session
         assert_eq!(tracker.all().len(), 1);
-        let stored = tracker.get(&SessionId::new_unchecked("s1")).unwrap();
+        let stored = tracker
+            .get(&SessionId::new_unchecked("s1"))
+            .ok_or("session not found")?;
         assert_eq!(stored.model.as_deref(), Some("sonnet"));
+        Ok(())
     }
 
     #[test]

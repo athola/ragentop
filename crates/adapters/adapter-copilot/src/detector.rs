@@ -74,54 +74,62 @@ mod tests {
     use tempfile::tempdir;
 
     #[test]
-    fn test_detect_sessions_finds_copilot_session() {
-        let dir = tempdir().unwrap();
+    fn test_detect_sessions_finds_copilot_session(
+    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let dir = tempdir()?;
         let copilot_dir = dir.path().join(".copilot");
-        fs::create_dir_all(&copilot_dir).unwrap();
+        fs::create_dir_all(&copilot_dir)?;
         fs::write(
             copilot_dir.join("config.json"),
             r#"{"sessionId": "copilot-sess-123"}"#,
-        )
-        .unwrap();
+        )?;
 
-        let sessions = detect_sessions(&copilot_dir).unwrap();
+        let sessions = detect_sessions(&copilot_dir)?;
         assert_eq!(sessions.len(), 1);
         assert_eq!(sessions[0].id.as_str(), "copilot-sess-123");
+        Ok(())
     }
 
     #[test]
-    fn test_detect_sessions_empty_when_no_config() {
-        let dir = tempdir().unwrap();
+    fn test_detect_sessions_empty_when_no_config(
+    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let dir = tempdir()?;
         let copilot_dir = dir.path().join(".copilot");
-        fs::create_dir_all(&copilot_dir).unwrap();
-        let sessions = detect_sessions(&copilot_dir).unwrap();
+        fs::create_dir_all(&copilot_dir)?;
+        let sessions = detect_sessions(&copilot_dir)?;
         assert!(sessions.is_empty());
+        Ok(())
     }
 
     #[test]
-    fn test_detect_sessions_nonexistent_returns_empty() {
-        let dir = tempdir().unwrap();
+    fn test_detect_sessions_nonexistent_returns_empty(
+    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let dir = tempdir()?;
         let nonexistent = dir.path().join("does-not-exist");
-        let sessions = detect_sessions(&nonexistent).unwrap();
+        let sessions = detect_sessions(&nonexistent)?;
         assert!(sessions.is_empty());
+        Ok(())
     }
 
     #[test]
-    fn test_detect_sessions_ignores_non_target_files() {
-        let dir = tempdir().unwrap();
+    fn test_detect_sessions_ignores_non_target_files(
+    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let dir = tempdir()?;
         let copilot_dir = dir.path().join(".copilot");
-        fs::create_dir_all(&copilot_dir).unwrap();
-        fs::write(copilot_dir.join("settings.json"), r#"{"theme": "dark"}"#).unwrap();
-        let sessions = detect_sessions(&copilot_dir).unwrap();
+        fs::create_dir_all(&copilot_dir)?;
+        fs::write(copilot_dir.join("settings.json"), r#"{"theme": "dark"}"#)?;
+        let sessions = detect_sessions(&copilot_dir)?;
         assert!(sessions.is_empty());
+        Ok(())
     }
 
     #[test]
-    fn test_is_recently_modified_true() {
-        let dir = tempdir().unwrap();
+    fn test_is_recently_modified_true() -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let dir = tempdir()?;
         let file = dir.path().join("recent");
-        fs::write(&file, "data").unwrap();
+        fs::write(&file, "data")?;
         assert!(is_recently_modified(&file, Duration::from_secs(60)));
+        Ok(())
     }
 
     #[test]

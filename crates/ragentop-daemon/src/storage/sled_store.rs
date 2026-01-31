@@ -66,53 +66,58 @@ mod tests {
     }
 
     #[test]
-    fn test_sled_dag_store_open() {
-        let tmp = TempDir::new().expect("create temp dir");
-        let store = SledDagStore::open(tmp.path()).expect("open store");
+    fn test_sled_dag_store_open() -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let tmp = TempDir::new()?;
+        let store = SledDagStore::open(tmp.path())?;
         drop(store);
+        Ok(())
     }
 
     #[test]
-    fn test_sled_dag_store_store_and_load() {
-        let tmp = TempDir::new().expect("create temp dir");
-        let store = SledDagStore::open(tmp.path()).expect("open store");
+    fn test_sled_dag_store_store_and_load() -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let tmp = TempDir::new()?;
+        let store = SledDagStore::open(tmp.path())?;
 
         let node = StateNode::new(vec![], None);
-        let hash = store.store(&node).expect("store node");
+        let hash = store.store(&node)?;
 
-        let loaded = store.load(&hash).expect("load node").expect("node exists");
+        let loaded = store.load(&hash)?.ok_or("node should exist")?;
         assert_eq!(loaded.commands.len(), 0);
         assert!(loaded.parent.is_none());
+        Ok(())
     }
 
     #[test]
-    fn test_sled_dag_store_load_nonexistent() {
-        let tmp = TempDir::new().expect("create temp dir");
-        let store = SledDagStore::open(tmp.path()).expect("open store");
+    fn test_sled_dag_store_load_nonexistent() -> std::result::Result<(), Box<dyn std::error::Error>>
+    {
+        let tmp = TempDir::new()?;
+        let store = SledDagStore::open(tmp.path())?;
 
         let hash = Hash("nonexistent".to_string());
-        let result = store.load(&hash).expect("load should not error");
+        let result = store.load(&hash)?;
         assert!(result.is_none());
+        Ok(())
     }
 
     #[test]
-    fn test_sled_dag_store_walk_history() {
-        let tmp = TempDir::new().expect("create temp dir");
-        let store = SledDagStore::open(tmp.path()).expect("open store");
+    fn test_sled_dag_store_walk_history() -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let tmp = TempDir::new()?;
+        let store = SledDagStore::open(tmp.path())?;
 
         let root = StateNode::new(vec![make_command("tool1")], None);
-        let root_hash = store.store(&root).expect("store root");
+        let root_hash = store.store(&root)?;
 
         let child = StateNode::new(vec![make_command("tool2")], Some(root_hash));
-        let child_hash = store.store(&child).expect("store child");
+        let child_hash = store.store(&child)?;
 
         let grandchild = StateNode::new(vec![make_command("tool3")], Some(child_hash));
-        let grandchild_hash = store.store(&grandchild).expect("store grandchild");
+        let grandchild_hash = store.store(&grandchild)?;
 
         let nodes: Vec<_> = store.walk_history(&grandchild_hash).collect();
         assert_eq!(nodes.len(), 3);
         assert_eq!(nodes[0].commands[0].tool, "tool3");
         assert_eq!(nodes[1].commands[0].tool, "tool2");
         assert_eq!(nodes[2].commands[0].tool, "tool1");
+        Ok(())
     }
 }

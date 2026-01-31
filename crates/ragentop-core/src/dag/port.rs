@@ -8,12 +8,6 @@ use crate::Result;
 /// Implementations handle the actual I/O (sled, filesystem, etc.).
 /// This trait lives in core but implementations live in the shell (daemon).
 pub trait DagStore: Send + Sync {
-    /// Stores a node and returns its content-addressed hash.
-    ///
-    /// # Errors
-    /// Returns `Error::Io` if the underlying storage operation fails.
-    fn store(&self, node: &StateNode) -> Result<Hash>;
-
     /// Loads a node by its hash.
     ///
     /// Returns `Ok(None)` if the hash is not found.
@@ -21,21 +15,31 @@ pub trait DagStore: Send + Sync {
     /// # Errors
     /// Returns `Error::Io` if the underlying storage operation fails.
     fn load(&self, hash: &Hash) -> Result<Option<StateNode>>;
+
+    /// Stores a node and returns its content-addressed hash.
+    ///
+    /// # Errors
+    /// Returns `Error::Io` if the underlying storage operation fails.
+    fn store(&self, node: &StateNode) -> Result<Hash>;
 }
 
 /// Iterator that walks the history chain from a node back to root.
-pub struct HistoryWalker<'a> {
-    store: &'a dyn DagStore,
+#[non_exhaustive]
+pub struct HistoryWalker<'store> {
+    /// Current hash being walked.
     current: Option<Hash>,
+    /// Reference to the DAG store.
+    store: &'store dyn DagStore,
 }
 
-impl<'a> HistoryWalker<'a> {
+impl<'store> HistoryWalker<'store> {
     /// Creates a new history walker starting from the given hash.
     #[must_use]
-    pub fn new(store: &'a dyn DagStore, from: &Hash) -> Self {
+    #[inline]
+    pub fn new(store: &'store dyn DagStore, from: &Hash) -> Self {
         Self {
-            store,
             current: Some(from.clone()),
+            store,
         }
     }
 }

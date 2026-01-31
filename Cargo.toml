@@ -24,7 +24,7 @@ rust-version = "1.75"
 # Core
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-thiserror = "2.0"
+thiserror = "1.0"
 anyhow = "1.0"
 tokio = { version = "1.0", features = ["full"] }
 tracing = "0.1"
@@ -57,6 +57,16 @@ tempfile = "3.14"
 unsafe_code = "forbid"
 
 [workspace.lints.clippy]
-all = "warn"
-pedantic = "warn"
-nursery = "warn"
+# Ultra-strict lint configuration - groups have lower priority so individual lints override
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+nursery = { level = "warn", priority = -1 }
+# restriction group disabled - enable individual lints as needed
+cargo = { level = "warn", priority = -1 }
+# Allow multiple crate versions - caused by transitive dependencies we can't control
+multiple_crate_versions = "allow"
+
+# Forbid panicking functions - require proper error handling
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"

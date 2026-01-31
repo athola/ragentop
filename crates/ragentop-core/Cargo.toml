@@ -3,7 +3,11 @@ name = "ragentop-core"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
 description = "Core types, traits (ports), and pure business logic for ragentop"
+readme = "README.md"
+keywords = ["agent", "monitoring", "ai"]
+categories = ["development-tools"]
 
 [dependencies]
 serde.workspace = true

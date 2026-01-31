@@ -5,6 +5,7 @@ use leptos::prelude::*;
 use crate::components::Dashboard;
 
 /// Main application component.
+#[expect(clippy::must_use_candidate)] // Leptos components are used via view! macro
 #[component]
 pub fn App() -> impl IntoView {
     view! {
@@ -17,9 +18,10 @@ pub fn App() -> impl IntoView {
 }
 
 /// Render the app to HTML string for SSR.
+#[inline]
 #[must_use]
 pub fn render_app() -> String {
-    use leptos::prelude::RenderHtml;
+    use leptos::prelude::RenderHtml as _;
     let html = App().to_html();
     format!(
         r#"<!DOCTYPE html>

@@ -23,14 +23,14 @@ fn get_active_claude_pids() -> std::collections::HashSet<String> {
         Ok(output) if output.status.success() => {
             // Claude is running - mark as having active sessions
             for line in String::from_utf8_lossy(&output.stdout).lines() {
-                if let Some(pid) = line.split_whitespace().next() {
+                if let Some(pid_str) = line.split_whitespace().next() {
                     // Get cwd for this PID
-                    match std::fs::read_link(format!("/proc/{pid}/cwd")) {
+                    match std::fs::read_link(format!("/proc/{pid_str}/cwd")) {
                         Ok(cwd) => {
                             active_dirs.insert(cwd.to_string_lossy().to_string());
                         }
-                        Err(e) => {
-                            tracing::debug!("Failed to read /proc/{pid}/cwd: {e}");
+                        Err(err) => {
+                            tracing::debug!("Failed to read /proc/{pid_str}/cwd: {err}");
                         }
                     }
                 }
@@ -39,11 +39,11 @@ fn get_active_claude_pids() -> std::collections::HashSet<String> {
         Ok(output) => {
             tracing::debug!(
                 "pgrep returned non-success status: {}",
-                output.status.code().unwrap_or(-1)
+                output.status.code().map_or(-1, |code| code)
             );
         }
-        Err(e) => {
-            tracing::debug!("pgrep command failed: {e}");
+        Err(err) => {
+            tracing::debug!("pgrep command failed: {err}");
         }
     }
     active_dirs
@@ -77,12 +77,12 @@ fn project_dir_to_path(name: &str) -> String {
 
             // Split project into parts, find longest existing prefix
             let parts: Vec<&str> = project.split('-').collect();
-            for i in (1..=parts.len()).rev() {
-                let prefix = parts[..i].join("-");
+            for iter in (1..=parts.len()).rev() {
+                let prefix = parts[..iter].join("-");
                 let candidate = format!("{home}/{prefix}");
                 if std::path::Path::new(&candidate).exists() {
                     // Found existing dir - remaining parts are subdirs
-                    let suffix = parts[i..].join("/");
+                    let suffix = parts[iter..].join("/");
                     return if suffix.is_empty() {
                         candidate
                     } else {
@@ -104,6 +104,7 @@ fn project_dir_to_path(name: &str) -> String {
 ///
 /// # Errors
 /// Returns an error if directory reading fails.
+#[inline]
 pub fn detect_sessions(config_dir: &Path) -> Result<Vec<AgentSession>> {
     let projects_dir = config_dir.join("projects");
     if !projects_dir.exists() {
@@ -128,20 +129,20 @@ pub fn detect_sessions(config_dir: &Path) -> Result<Vec<AgentSession>> {
         if let Ok(entries) = std::fs::read_dir(&project_path) {
             for entry in entries.flatten() {
                 let path = entry.path();
-                if path.extension().is_some_and(|e| e == "jsonl") {
+                if path.extension().is_some_and(|ext| ext == "jsonl") {
                     let session_id = path
                         .file_stem()
-                        .map(|s| s.to_string_lossy().to_string())
+                        .map(|stem| stem.to_string_lossy().to_string())
                         .unwrap_or_default();
 
                     // Use file metadata for timestamps and activity detection
                     let metadata = path.metadata().ok();
-                    let started_at = metadata.as_ref().and_then(|m| m.modified().ok());
+                    let started_at = metadata.as_ref().and_then(|meta| meta.modified().ok());
 
                     // Active if: running process OR modified within threshold
                     let is_process_active = active_dirs.contains(&working_dir);
                     let is_recently_modified = started_at
-                        .and_then(|t| SystemTime::now().duration_since(t).ok())
+                        .and_then(|time| SystemTime::now().duration_since(time).ok())
                         .is_some_and(|age| age < ACTIVE_THRESHOLD);
 
                     let status = if is_process_active || is_recently_modified {
@@ -151,15 +152,15 @@ pub fn detect_sessions(config_dir: &Path) -> Result<Vec<AgentSession>> {
                     };
 
                     sessions.push(AgentSession {
-                        id: SessionId::new_unchecked(session_id),
                         agent_type: AgentType::Claude,
+                        id: SessionId::new_unchecked(session_id),
                         model: None, // Would need to parse jsonl to get this
-                        session_name: Some(project_name.clone()),
-                        working_dir: Some(working_dir.clone().into()),
                         pane_id: None,
                         pid: None,
+                        session_name: Some(project_name.clone()),
                         started_at,
                         status,
+                        working_dir: Some(working_dir.clone().into()),
                     });
                 }
             }
@@ -175,47 +176,52 @@ mod tests {
     use tempfile::tempdir;
 
     #[test]
-    fn test_detect_sessions_finds_jsonl_files() {
-        let dir = tempdir().unwrap();
+    fn test_detect_sessions_finds_jsonl_files(
+    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let dir = tempdir()?;
         let claude_dir = dir.path().join(".claude");
         let project_dir = claude_dir.join("projects").join("-home-user-myproject");
-        fs::create_dir_all(&project_dir).unwrap();
+        fs::create_dir_all(&project_dir)?;
         fs::write(
             project_dir.join("abc123-def456.jsonl"),
             r#"{"type":"message"}"#,
-        )
-        .unwrap();
+        )?;
 
-        let sessions = detect_sessions(&claude_dir).unwrap();
+        let sessions = detect_sessions(&claude_dir)?;
         assert_eq!(sessions.len(), 1);
         assert_eq!(sessions[0].id.as_str(), "abc123-def456");
         assert_eq!(
             sessions[0].session_name.as_deref(),
             Some("-home-user-myproject")
         );
+        Ok(())
     }
 
     #[test]
-    fn test_detect_sessions_multiple_sessions_per_project() {
-        let dir = tempdir().unwrap();
+    fn test_detect_sessions_multiple_sessions_per_project(
+    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let dir = tempdir()?;
         let claude_dir = dir.path().join(".claude");
         let project_dir = claude_dir.join("projects").join("-home-user-project");
-        fs::create_dir_all(&project_dir).unwrap();
-        fs::write(project_dir.join("session-1.jsonl"), "{}").unwrap();
-        fs::write(project_dir.join("session-2.jsonl"), "{}").unwrap();
+        fs::create_dir_all(&project_dir)?;
+        fs::write(project_dir.join("session-1.jsonl"), "{}")?;
+        fs::write(project_dir.join("session-2.jsonl"), "{}")?;
 
-        let sessions = detect_sessions(&claude_dir).unwrap();
+        let sessions = detect_sessions(&claude_dir)?;
         assert_eq!(sessions.len(), 2);
+        Ok(())
     }
 
     #[test]
-    fn test_detect_sessions_empty_when_no_projects() {
-        let dir = tempdir().unwrap();
+    fn test_detect_sessions_empty_when_no_projects(
+    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let dir = tempdir()?;
         let claude_dir = dir.path().join(".claude");
-        fs::create_dir_all(&claude_dir).unwrap();
+        fs::create_dir_all(&claude_dir)?;
 
-        let sessions = detect_sessions(&claude_dir).unwrap();
+        let sessions = detect_sessions(&claude_dir)?;
         assert!(sessions.is_empty());
+        Ok(())
     }
 
     #[test]
@@ -231,36 +237,42 @@ mod tests {
     }
 
     #[test]
-    fn test_detect_sessions_ignores_non_jsonl_files() {
-        let dir = tempdir().unwrap();
+    fn test_detect_sessions_ignores_non_jsonl_files(
+    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let dir = tempdir()?;
         let claude_dir = dir.path().join(".claude");
         let project_dir = claude_dir.join("projects").join("-home-user-project");
-        fs::create_dir_all(&project_dir).unwrap();
-        fs::write(project_dir.join("readme.txt"), "not a session").unwrap();
-        fs::write(project_dir.join("config.json"), "{}").unwrap();
+        fs::create_dir_all(&project_dir)?;
+        fs::write(project_dir.join("readme.txt"), "not a session")?;
+        fs::write(project_dir.join("config.json"), "{}")?;
 
-        let sessions = detect_sessions(&claude_dir).unwrap();
+        let sessions = detect_sessions(&claude_dir)?;
         assert!(sessions.is_empty());
+        Ok(())
     }
 
     #[test]
-    fn test_detect_sessions_handles_empty_jsonl() {
-        let dir = tempdir().unwrap();
+    fn test_detect_sessions_handles_empty_jsonl(
+    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let dir = tempdir()?;
         let claude_dir = dir.path().join(".claude");
         let project_dir = claude_dir.join("projects").join("-home-user-project");
-        fs::create_dir_all(&project_dir).unwrap();
-        fs::write(project_dir.join("empty-session.jsonl"), "").unwrap();
+        fs::create_dir_all(&project_dir)?;
+        fs::write(project_dir.join("empty-session.jsonl"), "")?;
 
-        let sessions = detect_sessions(&claude_dir).unwrap();
+        let sessions = detect_sessions(&claude_dir)?;
         assert_eq!(sessions.len(), 1);
         assert_eq!(sessions[0].id.as_str(), "empty-session");
+        Ok(())
     }
 
     #[test]
-    fn test_detect_sessions_nonexistent_dir_returns_empty() {
-        let dir = tempdir().unwrap();
+    fn test_detect_sessions_nonexistent_dir_returns_empty(
+    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let dir = tempdir()?;
         let nonexistent = dir.path().join("does-not-exist");
-        let sessions = detect_sessions(&nonexistent).unwrap();
+        let sessions = detect_sessions(&nonexistent)?;
         assert!(sessions.is_empty());
+        Ok(())
     }
 }

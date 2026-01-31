@@ -11,8 +11,8 @@ pub mod multiplexer;
 pub mod protocol;
 pub mod types;
 
-pub use adapter::{AdapterCapabilities, AgentAdapter};
-pub use config::Config;
+pub use adapter::{Adapter, Capabilities};
+pub use config::{Config, Daemon, Tui, Web};
 pub use error::{Error, Result};
 pub use multiplexer::{Multiplexer, PaneInfo};
 pub use protocol::{Request, Response};

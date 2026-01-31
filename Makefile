@@ -2,7 +2,7 @@
 # Rust monitoring tool for AI coding agents
 
 .PHONY: help all check check-verbose build build-dev watch \
-        test test-quiet test-verbose test-core test-adapters coverage \
+        test test-quiet test-verbose test-core test-adapters coverage bench \
         lint fmt fmt-check audit outdated \
         clean clean-docs deep-clean \
         docs docs-open readme-deps \
@@ -10,9 +10,9 @@
         demo demo-adapters demo-architecture demo-all demo-types \
         demo-detection demo-metrics demo-history demo-dag \
         demo-multiplexer demo-protocol demo-tracking \
-        demo-daemon-start demo-cleanup \
+        demo-daemon-start demo-cleanup dogfood \
         ci ci-full pre-commit pre-push githooks \
-        tree deps size version dry-run-build dry-run-test
+        tree deps size version dry-run-build dry-run-test update-deps
 
 # Default target
 .DEFAULT_GOAL := help
@@ -99,6 +99,9 @@ coverage: ## Run tests with coverage (requires cargo-llvm-cov)
 		echo "cargo-llvm-cov not installed. Install with: cargo install cargo-llvm-cov"; \
 		exit 1; \
 	fi
+
+bench: ## Run benchmarks
+	$(CARGO) bench --workspace
 
 ##@ Quality
 
@@ -546,6 +549,10 @@ demo-tracking: build ## Demonstrate session tracking (LIVE, daemon)
 	@echo "└───────────────────────────────────────────────────────┘"
 	@$(MAKE) --no-print-directory demo-cleanup
 
+dogfood: build ## Run ragentop monitoring this project's agents (LIVE)
+	@echo "Starting ragentop to monitor current agent sessions..."
+	@./target/release/ragentop tui 2>/dev/null || ./target/release/ragentop detect
+
 ##@ CI/CD
 
 githooks: ## Install git pre-commit hooks
@@ -579,6 +586,9 @@ version: ## Show version information
 	@grep "^version" Cargo.toml | head -1 || echo "Version not found in Cargo.toml"
 	@echo "Rust version:"
 	@rustc --version
+
+update-deps: ## Update Cargo.lock to latest compatible versions
+	$(CARGO) update
 
 ##@ Dry Run
 
