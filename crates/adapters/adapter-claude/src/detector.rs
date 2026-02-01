@@ -3,47 +3,26 @@
 use ragentop_core::{AgentSession, AgentType, Result, SessionId, SessionStatus};
 use std::path::Path;
 use std::time::{Duration, SystemTime};
+use sysinfo::{ProcessRefreshKind, RefreshKind, System};
 
 /// Sessions modified within this duration are considered "Active".
 /// 5 minutes accounts for Claude's batched writes and user think time.
 const ACTIVE_THRESHOLD: Duration = Duration::from_secs(300);
 
-/// Get PIDs of running claude processes and their working directories.
+/// Get working directories of running Claude processes.
 ///
-/// This function uses `pgrep` to find running Claude processes and reads their
-/// current working directories from `/proc/<pid>/cwd`. Process detection failures
-/// are logged at debug level for troubleshooting.
-fn get_active_claude_pids() -> std::collections::HashSet<String> {
+/// Uses sysinfo for cross-platform process detection (Linux, macOS, Windows).
+fn get_active_claude_dirs() -> std::collections::HashSet<String> {
     let mut active_dirs = std::collections::HashSet::new();
-    // Find claude processes and their working directories
-    match std::process::Command::new("pgrep")
-        .args(["-a", "claude"])
-        .output()
-    {
-        Ok(output) if output.status.success() => {
-            // Claude is running - mark as having active sessions
-            for line in String::from_utf8_lossy(&output.stdout).lines() {
-                if let Some(pid_str) = line.split_whitespace().next() {
-                    // Get cwd for this PID
-                    match std::fs::read_link(format!("/proc/{pid_str}/cwd")) {
-                        Ok(cwd) => {
-                            active_dirs.insert(cwd.to_string_lossy().to_string());
-                        }
-                        Err(err) => {
-                            tracing::debug!("Failed to read /proc/{pid_str}/cwd: {err}");
-                        }
-                    }
-                }
+    let s = System::new_with_specifics(
+        RefreshKind::new().with_processes(ProcessRefreshKind::everything()),
+    );
+    for process in s.processes().values() {
+        let name = process.name().to_string_lossy();
+        if name.contains("claude") {
+            if let Some(cwd) = process.cwd() {
+                active_dirs.insert(cwd.to_string_lossy().to_string());
             }
-        }
-        Ok(output) => {
-            tracing::debug!(
-                "pgrep returned non-success status: {}",
-                output.status.code().map_or(-1, |code| code)
-            );
-        }
-        Err(err) => {
-            tracing::debug!("pgrep command failed: {err}");
         }
     }
     active_dirs
@@ -112,7 +91,7 @@ pub fn detect_sessions(config_dir: &Path) -> Result<Vec<AgentSession>> {
     }
 
     // Get directories with active Claude processes
-    let active_dirs = get_active_claude_pids();
+    let active_dirs = get_active_claude_dirs();
 
     let mut sessions = Vec::new();
     for project_entry in std::fs::read_dir(&projects_dir)? {

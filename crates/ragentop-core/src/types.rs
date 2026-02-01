@@ -13,21 +13,9 @@ pub enum AgentType {
     Gemini,
     Copilot,
     Qwen,
-    /// GLM (`ChatGLM`) adapter was removed in v0.1.0 per War Room decision.
-    /// This variant is retained for backwards compatibility with serialized data.
-    /// Will be fully removed in v0.2.0.
-    #[deprecated(
-        since = "0.1.0",
-        note = "GLM adapter removed; will be deleted in v0.2.0"
-    )]
-    Glm,
 }
 
 impl std::fmt::Display for AgentType {
-    #[expect(
-        deprecated,
-        reason = "Glm variant retained for backwards compatibility"
-    )]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Claude => write!(f, "claude"),
@@ -35,7 +23,6 @@ impl std::fmt::Display for AgentType {
             Self::Gemini => write!(f, "gemini"),
             Self::Copilot => write!(f, "copilot"),
             Self::Qwen => write!(f, "qwen"),
-            Self::Glm => write!(f, "glm"),
         }
     }
 }

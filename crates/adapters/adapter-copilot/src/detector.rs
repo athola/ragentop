@@ -4,14 +4,16 @@ use ragentop_core::{AgentSession, AgentType, Result, SessionId, SessionStatus};
 use serde::Deserialize;
 use std::path::Path;
 use std::time::{Duration, SystemTime};
+use sysinfo::{ProcessRefreshKind, RefreshKind, System};
 
 const ACTIVE_THRESHOLD: Duration = Duration::from_secs(300);
 
 fn is_process_running(name: &str) -> bool {
-    std::process::Command::new("pgrep")
-        .args(["-f", name])
-        .output()
-        .is_ok_and(|o| o.status.success())
+    let s =
+        System::new_with_specifics(RefreshKind::new().with_processes(ProcessRefreshKind::new()));
+    s.processes()
+        .values()
+        .any(|p| p.name().to_string_lossy().contains(name))
 }
 
 fn is_recently_modified(path: &Path, threshold: Duration) -> bool {

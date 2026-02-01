@@ -22,52 +22,46 @@ We adopt a **Hybrid Architecture** combining:
 
 ### Architecture Overview
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                        IMPERATIVE SHELL                         │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐             │
-│  │ ragentop-cli│  │ragentop-tui │  │ragentop-web │  (Drivers)  │
-│  └──────┬──────┘  └──────┬──────┘  └──────┬──────┘             │
-│         │                │                │                     │
-│         └────────────────┼────────────────┘                     │
-│                          ▼                                      │
-│  ┌───────────────────────────────────────────────────────────┐ │
-│  │                   ragentop-daemon                          │ │
-│  │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐        │ │
-│  │  │   Server    │  │  Registry   │  │   Session   │        │ │
-│  │  │  (Socket)   │  │ (Adapters)  │  │  Tracker    │        │ │
-│  │  └──────┬──────┘  └──────┬──────┘  └──────┬──────┘        │ │
-│  └─────────┼────────────────┼────────────────┼────────────────┘ │
-│            │                │                │                   │
-├────────────┼────────────────┼────────────────┼───────────────────┤
-│            │      HEXAGONAL BOUNDARY         │                   │
-│            ▼                ▼                ▼                   │
-│  ┌─────────────────────────────────────────────────────────────┐│
-│  │                    DRIVEN PORTS (Traits)                    ││
-│  │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐         ││
-│  │  │AgentAdapter │  │  DagStore   │  │   Config    │         ││
-│  │  │   (trait)   │  │   (trait)   │  │  (trait)    │         ││
-│  │  └──────┬──────┘  └──────┬──────┘  └──────┬──────┘         ││
-│  └─────────┼────────────────┼────────────────┼─────────────────┘│
-│            │                │                │                   │
-├────────────┼────────────────┼────────────────┼───────────────────┤
-│            │         FUNCTIONAL CORE         │                   │
-│            ▼                ▼                ▼                   │
-│  ┌─────────────────────────────────────────────────────────────┐│
-│  │                    ragentop-core                            ││
-│  │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐         ││
-│  │  │   Types     │  │  DAG Ops    │  │  Metrics    │         ││
-│  │  │   (pure)    │  │   (pure)    │  │   (pure)    │         ││
-│  │  └─────────────┘  └─────────────┘  └─────────────┘         ││
-│  └─────────────────────────────────────────────────────────────┘│
-│                                                                  │
-├──────────────────────────────────────────────────────────────────┤
-│                         ADAPTERS                                 │
-│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐           │
-│  │ adapter- │ │ adapter- │ │ adapter- │ │ adapter- │  ...      │
-│  │  claude  │ │  codex   │ │  gemini  │ │ copilot  │           │
-│  └──────────┘ └──────────┘ └──────────┘ └──────────┘           │
-└──────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph Shell["IMPERATIVE SHELL"]
+        CLI[ragentop-cli]
+        TUI[ragentop-tui]
+        Web[ragentop-web]
+
+        subgraph Daemon[ragentop-daemon]
+            Server["Server (Socket)"]
+            Registry["Registry (Adapters)"]
+            Tracker["Session Tracker"]
+        end
+
+        CLI --> Daemon
+        TUI --> Daemon
+        Web --> Daemon
+    end
+
+    subgraph Boundary["HEXAGONAL BOUNDARY"]
+        AgentAdapter["AgentAdapter (trait)"]
+        DagStore["DagStore (trait)"]
+        Config["Config (trait)"]
+    end
+
+    subgraph Core["FUNCTIONAL CORE: ragentop-core"]
+        Types["Types (pure)"]
+        DAG["DAG Ops (pure)"]
+        Metrics["Metrics (pure)"]
+    end
+
+    subgraph Adapters["ADAPTERS"]
+        Claude[adapter-claude]
+        Codex[adapter-codex]
+        Gemini[adapter-gemini]
+        Copilot[adapter-copilot]
+    end
+
+    Daemon --> Boundary
+    Boundary --> Core
+    Adapters --> Boundary
 ```
 
 ### Layer Responsibilities

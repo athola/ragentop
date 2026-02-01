@@ -17,17 +17,12 @@ impl Theme {
 
     #[inline]
     #[must_use]
-    #[expect(
-        deprecated,
-        reason = "Glm variant retained for backwards compatibility"
-    )]
     pub const fn agent_color(agent_type: AgentType) -> Color {
         match agent_type {
             AgentType::Claude => Color::Rgb(217, 119, 6),
             AgentType::Codex => Color::Rgb(34, 197, 94),
             AgentType::Copilot => Color::Rgb(139, 92, 246),
             AgentType::Gemini => Color::Rgb(59, 130, 246),
-            AgentType::Glm => Color::Rgb(236, 72, 153),
             AgentType::Qwen => Color::Rgb(6, 182, 212),
         }
     }
