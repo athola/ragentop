@@ -2,7 +2,7 @@
 
 use ragentop_core::multiplexer::{Multiplexer, PaneInfo};
 use ragentop_core::Result;
-use std::process::Command;
+use tmux_interface::{ListPanes, SelectPane, Tmux};
 
 /// Shell metacharacters that could enable command injection.
 const SHELL_METACHARACTERS: &[char] = &[';', '`', '$', '|', '&', '(', ')', '<', '>'];
@@ -46,26 +46,22 @@ impl TmuxAdapter {
 
 impl Multiplexer for TmuxAdapter {
     fn list_panes(&self) -> Result<Vec<PaneInfo>> {
-        let output = Command::new("tmux")
-            .args([
-                "list-panes",
-                "-F",
-                "#{pane_id}:#{pane_title}:#{pane_active}",
-            ])
+        let list_panes = ListPanes::new().format("#{pane_id}:#{pane_title}:#{pane_active}");
+        let output = Tmux::with_command(list_panes)
             .output()
             .map_err(|e| ragentop_core::Error::Adapter(format!("tmux command failed: {e}")))?;
 
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(ragentop_core::Error::Adapter(format!(
-                "tmux list-panes failed: {stderr}"
-            )));
+        if !output.success() {
+            return Err(ragentop_core::Error::Adapter(
+                "tmux list-panes failed".to_string(),
+            ));
         }
 
-        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stdout_bytes = output.stdout();
+        let stdout = String::from_utf8_lossy(&stdout_bytes);
         let panes = stdout
             .lines()
-            .filter_map(|line| {
+            .filter_map(|line: &str| {
                 let parts: Vec<&str> = line.splitn(3, ':').collect();
                 if parts.len() >= 3 {
                     Some(PaneInfo {
@@ -87,16 +83,15 @@ impl Multiplexer for TmuxAdapter {
         validate_pane_id(pane_id)?;
         validate_no_shell_metacharacters(name, "name")?;
 
-        let output = Command::new("tmux")
-            .args(["select-pane", "-T", name, "-t", pane_id])
+        let select_pane = SelectPane::new().title(name).target_pane(pane_id);
+        let output = Tmux::with_command(select_pane)
             .output()
             .map_err(|e| ragentop_core::Error::Adapter(format!("tmux command failed: {e}")))?;
 
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(ragentop_core::Error::Adapter(format!(
-                "tmux select-pane failed: {stderr}"
-            )));
+        if !output.success() {
+            return Err(ragentop_core::Error::Adapter(
+                "tmux select-pane failed".to_string(),
+            ));
         }
 
         Ok(())
