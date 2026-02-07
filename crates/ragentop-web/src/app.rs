@@ -22,7 +22,8 @@ pub fn App() -> impl IntoView {
 #[must_use]
 pub fn render_app() -> String {
     use leptos::prelude::RenderHtml as _;
-    let html = App().to_html();
+    let owner = Owner::new();
+    let html = owner.with(|| App().to_html());
     format!(
         r#"<!DOCTYPE html>
 <html lang="en">

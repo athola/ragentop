@@ -1,7 +1,4 @@
-//! Web server for ragentop dashboard.
-
-use axum::{response::Html, routing::get, Router};
-use ragentop_web::app::render_app;
+//! Web server binary for ragentop dashboard.
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -13,16 +10,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .ok()
         .and_then(|s| s.parse().ok())
         .unwrap_or(3000);
-    let addr = std::net::SocketAddr::from((host, port));
 
-    let app = Router::new().route("/", get(index));
-
-    let listener = tokio::net::TcpListener::bind(&addr).await?;
-    println!("listening on http://{}", &addr);
-    axum::serve(listener, app).await?;
-    Ok(())
-}
-
-async fn index() -> Html<String> {
-    Html(render_app())
+    ragentop_web::serve(host, port).await
 }

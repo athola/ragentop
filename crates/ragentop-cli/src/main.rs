@@ -25,7 +25,7 @@ enum Commands {
     Status,
     /// Launch the terminal UI [stub: not yet implemented]
     Tui,
-    /// Start the web dashboard server [stub: not yet implemented]
+    /// Start the web dashboard server
     Web {
         /// Port to listen on
         #[arg(short, long, default_value = "3000")]
@@ -75,8 +75,16 @@ fn main() {
             }
         }
         Some(Commands::Web { port }) => {
-            eprintln!("Starting web server on port {port}...");
-            // TODO: Start actual web server with ragentop_web
+            let rt = match tokio::runtime::Runtime::new() {
+                Ok(rt) => rt,
+                Err(e) => {
+                    eprintln!("Failed to create async runtime: {e}");
+                    return;
+                }
+            };
+            if let Err(e) = rt.block_on(ragentop_web::serve([127, 0, 0, 1], port)) {
+                eprintln!("Web server error: {e}");
+            }
         }
         Some(Commands::Detect { verbose }) => {
             detect_sessions(verbose);
