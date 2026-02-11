@@ -1,0 +1,10 @@
+target/
+
+# Claude session state
+.claude/session-state.md
+
+# Planning docs
+docs/plans/
+
+# Commit message file
+commit_msg.txt

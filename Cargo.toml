@@ -1,0 +1,72 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/ragentop-core",
+    "crates/ragentop-daemon",
+    "crates/ragentop-tui",
+    "crates/ragentop-web",
+    "crates/ragentop-cli",
+    "crates/adapters/adapter-claude",
+    "crates/adapters/adapter-codex",
+    "crates/adapters/adapter-gemini",
+    "crates/adapters/adapter-copilot",
+    "crates/adapters/adapter-qwen",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/alext/ragentop"
+rust-version = "1.75"
+
+[workspace.dependencies]
+# Core
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "1.0"
+anyhow = "1.0"
+tokio = { version = "1.0", features = ["full"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Config
+toml = "0.8"
+directories = "5.0"
+dirs = "5.0"
+
+# Storage
+sled = "0.34"
+blake3 = "1.5"
+
+# TUI
+ratatui = "0.29"
+crossterm = "0.28"
+
+# Web
+leptos = { version = "0.8", features = ["ssr"] }
+
+# CLI
+clap = { version = "4.5", features = ["derive"] }
+
+# Testing
+rstest = "0.23"
+tempfile = "3.14"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+# Ultra-strict lint configuration - groups have lower priority so individual lints override
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+nursery = { level = "warn", priority = -1 }
+# restriction group disabled - enable individual lints as needed
+cargo = { level = "warn", priority = -1 }
+# Allow multiple crate versions - caused by transitive dependencies we can't control
+multiple_crate_versions = "allow"
+
+# Forbid panicking functions - require proper error handling
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"

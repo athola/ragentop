@@ -1,0 +1,33 @@
+[package]
+name = "ragentop-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "CLI entry point for ragentop"
+readme = "README.md"
+keywords = ["agent", "monitoring", "ai"]
+categories = ["development-tools"]
+
+[[bin]]
+name = "ragentop"
+path = "src/main.rs"
+
+[dependencies]
+ragentop-core = { path = "../ragentop-core" }
+ragentop-daemon = { path = "../ragentop-daemon" }
+ragentop-tui = { path = "../ragentop-tui" }
+ragentop-web = { path = "../ragentop-web" }
+adapter-claude = { path = "../adapters/adapter-claude" }
+adapter-codex = { path = "../adapters/adapter-codex" }
+adapter-copilot = { path = "../adapters/adapter-copilot" }
+adapter-gemini = { path = "../adapters/adapter-gemini" }
+adapter-qwen = { path = "../adapters/adapter-qwen" }
+clap.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+anyhow.workspace = true
+
+[lints]
+workspace = true

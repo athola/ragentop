@@ -1,0 +1,29 @@
+[package]
+name = "ragentop-daemon"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Background daemon for collecting agent metrics"
+readme = "README.md"
+keywords = ["agent", "monitoring", "ai"]
+categories = ["development-tools"]
+
+[dependencies]
+ragentop-core = { path = "../ragentop-core" }
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+anyhow.workspace = true
+sled.workspace = true
+directories.workspace = true
+dirs.workspace = true
+toml.workspace = true
+tmux_interface = "0.3.2"
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true

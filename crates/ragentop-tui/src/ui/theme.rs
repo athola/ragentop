@@ -1,0 +1,58 @@
+//! Color theme and styling.
+
+use ragentop_core::AgentType;
+use ratatui::style::{Color, Modifier, Style};
+
+#[non_exhaustive]
+pub struct Theme;
+
+impl Theme {
+    pub const BG_SELECTED: Color = Color::Rgb(38, 38, 38);
+    pub const STATUS_ACTIVE: Color = Color::Green;
+    pub const STATUS_IDLE: Color = Color::Yellow;
+    pub const STATUS_PAUSED: Color = Color::DarkGray;
+    pub const TEXT_MUTED: Color = Color::Rgb(82, 82, 82);
+    pub const TEXT_PRIMARY: Color = Color::Rgb(229, 229, 229);
+    pub const TEXT_SECONDARY: Color = Color::Rgb(163, 163, 163);
+
+    #[inline]
+    #[must_use]
+    pub const fn agent_color(agent_type: AgentType) -> Color {
+        match agent_type {
+            AgentType::Claude => Color::Rgb(217, 119, 6),
+            AgentType::Codex => Color::Rgb(34, 197, 94),
+            AgentType::Copilot => Color::Rgb(139, 92, 246),
+            AgentType::Gemini => Color::Rgb(59, 130, 246),
+            AgentType::Qwen => Color::Rgb(6, 182, 212),
+        }
+    }
+
+    #[inline]
+    #[must_use]
+    pub const fn border_style() -> Style {
+        Style::new().fg(Self::TEXT_MUTED)
+    }
+
+    #[inline]
+    #[must_use]
+    pub const fn default_style() -> Style {
+        Style::new().fg(Self::TEXT_PRIMARY)
+    }
+
+    #[inline]
+    #[must_use]
+    pub const fn header_style() -> Style {
+        Style::new()
+            .fg(Self::TEXT_SECONDARY)
+            .add_modifier(Modifier::UNDERLINED)
+    }
+
+    #[inline]
+    #[must_use]
+    pub const fn selected_style() -> Style {
+        Style::new()
+            .fg(Self::TEXT_PRIMARY)
+            .bg(Self::BG_SELECTED)
+            .add_modifier(Modifier::BOLD)
+    }
+}
