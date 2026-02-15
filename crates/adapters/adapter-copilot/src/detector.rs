@@ -53,17 +53,13 @@ pub fn detect_sessions(config_dir: &Path) -> Result<Vec<AgentSession>> {
             };
             let started_at = config_file.metadata().ok().and_then(|m| m.modified().ok());
 
-            return Ok(vec![AgentSession {
-                id: SessionId::new_unchecked(session_id),
-                agent_type: AgentType::Copilot,
-                model: Some("gpt-4".to_string()),
-                session_name: None,
-                working_dir: None,
-                pane_id: None,
-                pid: None,
-                started_at,
+            return Ok(vec![AgentSession::new(
+                SessionId::new_unchecked(session_id),
+                AgentType::Copilot,
                 status,
-            }]);
+            )
+            .with_model(Some("gpt-4".to_string()))
+            .with_started_at(started_at)]);
         }
     }
     Ok(vec![])

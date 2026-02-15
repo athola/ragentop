@@ -11,7 +11,7 @@ ragentop is a Rust monitoring tool for AI coding agents. It uses a **Hybrid Hexa
 ```
 FUNCTIONAL CORE (ragentop-core)
 ├── Pure functions only - NO I/O, NO side effects
-├── Types, traits (ports), DAG operations, business logic
+├── Types, traits (ports), DAG operations, cost monitoring, business logic
 └── Test target: 90% coverage with unit tests
 
 HEXAGONAL BOUNDARY
@@ -44,7 +44,7 @@ Before merging, verify:
 
 | Crate | Purpose | Purity |
 |-------|---------|--------|
-| `ragentop-core` | Types, traits, DAG ops, config | Pure |
+| `ragentop-core` | Types, traits, DAG ops, config, alerts, pricing, burnrate, stats | Pure |
 | `ragentop-daemon` | Background collector, socket API | Impure |
 | `ragentop-tui` | Terminal UI (ratatui) | Impure |
 | `ragentop-web` | Web UI (leptos) | Impure |

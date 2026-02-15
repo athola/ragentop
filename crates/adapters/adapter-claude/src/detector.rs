@@ -130,17 +130,16 @@ pub fn detect_sessions(config_dir: &Path) -> Result<Vec<AgentSession>> {
                         SessionStatus::Idle
                     };
 
-                    sessions.push(AgentSession {
-                        agent_type: AgentType::Claude,
-                        id: SessionId::new_unchecked(session_id),
-                        model: None, // Would need to parse jsonl to get this
-                        pane_id: None,
-                        pid: None,
-                        session_name: Some(project_name.clone()),
-                        started_at,
-                        status,
-                        working_dir: Some(working_dir.clone().into()),
-                    });
+                    sessions.push(
+                        AgentSession::new(
+                            SessionId::new_unchecked(session_id),
+                            AgentType::Claude,
+                            status,
+                        )
+                        .with_session_name(Some(project_name.clone()))
+                        .with_started_at(started_at)
+                        .with_working_dir(Some(working_dir.clone().into())),
+                    );
                 }
             }
         }

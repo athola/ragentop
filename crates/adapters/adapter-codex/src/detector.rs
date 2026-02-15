@@ -66,17 +66,12 @@ pub fn detect_sessions(config_dir: &Path) -> Result<Vec<AgentSession>> {
 
                     let started_at = path.metadata().ok().and_then(|m| m.modified().ok());
 
-                    sessions.push(AgentSession {
-                        id: SessionId::new_unchecked(id),
-                        agent_type: AgentType::Codex,
-                        model: data.model,
-                        session_name: None,
-                        working_dir: data.project_path.map(std::path::PathBuf::from),
-                        pane_id: None,
-                        pid: None,
-                        started_at,
-                        status,
-                    });
+                    sessions.push(
+                        AgentSession::new(SessionId::new_unchecked(id), AgentType::Codex, status)
+                            .with_model(data.model)
+                            .with_working_dir(data.project_path.map(std::path::PathBuf::from))
+                            .with_started_at(started_at),
+                    );
                 }
             }
         }

@@ -79,6 +79,8 @@ mod tests {
             pid: Some(12345),
             started_at: Some(SystemTime::now()),
             status: SessionStatus::Active,
+            last_event_at: None,
+            telemetry_status: crate::TelemetryStatus::default(),
         }
     }
 
@@ -157,6 +159,9 @@ mod tests {
                 cpu_percent: Some(25.5),
                 duration: Some(std::time::Duration::from_secs(120)),
                 command_count: 42,
+                lines_added: 0,
+                lines_removed: 0,
+                cache_hit_rate: None,
             },
         };
         let json = serde_json::to_string(&resp)?;

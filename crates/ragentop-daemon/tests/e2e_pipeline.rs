@@ -38,13 +38,14 @@ impl Adapter for MockClaudeAdapter {
     }
 
     fn poll_metrics(&self, _session_id: &SessionId) -> ragentop_core::Result<SessionMetrics> {
-        Ok(SessionMetrics {
-            token_count: 1500,
-            cost_usd: Some(0.05),
-            cpu_percent: Some(12.0),
-            duration: Some(std::time::Duration::from_secs(90)),
-            command_count: 7,
-        })
+        Ok(SessionMetrics::new(
+            1500,
+            Some(0.05),
+            Some(12.0),
+            Some(std::time::Duration::from_secs(90)),
+            7,
+        )
+        .0)
     }
 
     fn get_command_history(
@@ -81,17 +82,17 @@ impl Adapter for MockClaudeAdapter {
 }
 
 fn make_session(id: &str) -> AgentSession {
-    AgentSession {
-        id: SessionId::new_unchecked(id),
-        agent_type: AgentType::Claude,
-        model: Some("opus-4".to_string()),
-        session_name: Some("test-project".to_string()),
-        working_dir: Some(PathBuf::from("/home/user/project")),
-        pane_id: Some("%1".to_string()),
-        pid: Some(12345),
-        started_at: Some(SystemTime::now()),
-        status: SessionStatus::Active,
-    }
+    AgentSession::new(
+        SessionId::new_unchecked(id),
+        AgentType::Claude,
+        SessionStatus::Active,
+    )
+    .with_model(Some("opus-4".to_string()))
+    .with_session_name(Some("test-project".to_string()))
+    .with_working_dir(Some(PathBuf::from("/home/user/project")))
+    .with_pane_id(Some("%1".to_string()))
+    .with_pid(Some(12345))
+    .with_started_at(Some(SystemTime::now()))
 }
 
 /// Full pipeline: adapter detects → tracker collects → store persists → protocol queries.

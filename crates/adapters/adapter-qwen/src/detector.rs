@@ -65,17 +65,15 @@ pub fn detect_sessions(config_dir: &Path) -> Result<Vec<AgentSession>> {
                         };
                         let started_at = path.metadata().ok().and_then(|m| m.modified().ok());
 
-                        sessions.push(AgentSession {
-                            id: SessionId::new_unchecked(id),
-                            agent_type: AgentType::Qwen,
-                            model: data.model.or_else(|| Some("qwen-coder".to_string())),
-                            session_name: None,
-                            working_dir: None,
-                            pane_id: None,
-                            pid: None,
-                            started_at,
-                            status,
-                        });
+                        sessions.push(
+                            AgentSession::new(
+                                SessionId::new_unchecked(id),
+                                AgentType::Qwen,
+                                status,
+                            )
+                            .with_model(data.model.or_else(|| Some("qwen-coder".to_string())))
+                            .with_started_at(started_at),
+                        );
                     }
                 }
             }

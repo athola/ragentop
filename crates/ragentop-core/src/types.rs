@@ -103,8 +103,98 @@ pub enum SessionStatus {
     Paused,
 }
 
+/// Telemetry connection status for an agent session.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
+#[non_exhaustive]
+#[serde(rename_all = "lowercase")]
+pub enum TelemetryStatus {
+    /// Successfully connected to telemetry source.
+    Connected,
+    /// Connection attempt used wrong port/endpoint.
+    WrongPort,
+    /// Telemetry is not configured for this agent.
+    NotConfigured,
+    /// Status is not yet determined.
+    #[default]
+    Unknown,
+}
+
+impl std::fmt::Display for TelemetryStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Connected => write!(f, "connected"),
+            Self::WrongPort => write!(f, "wrong_port"),
+            Self::NotConfigured => write!(f, "not_configured"),
+            Self::Unknown => write!(f, "unknown"),
+        }
+    }
+}
+
+/// Activity classification based on time since last event.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[non_exhaustive]
+#[serde(rename_all = "lowercase")]
+pub enum ActivityStatus {
+    /// Event within the last 30 seconds.
+    Active,
+    /// Event between 30 seconds and 5 minutes ago.
+    Idle,
+    /// No event for over 5 minutes, or no events at all.
+    Done,
+}
+
+impl std::fmt::Display for ActivityStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Active => write!(f, "active"),
+            Self::Idle => write!(f, "idle"),
+            Self::Done => write!(f, "done"),
+        }
+    }
+}
+
+/// 30 seconds: threshold between Active and Idle.
+const ACTIVE_THRESHOLD: Duration = Duration::from_secs(30);
+/// 5 minutes: threshold between Idle and Done.
+const IDLE_THRESHOLD: Duration = Duration::from_secs(300);
+
+/// Classify activity based on elapsed time since last event.
+///
+/// - Active: last event within 30 seconds
+/// - Idle: last event between 30 seconds and 5 minutes
+/// - Done: last event over 5 minutes ago, or no event at all
+///
+/// # Examples
+/// ```
+/// use ragentop_core::types::{classify_activity, ActivityStatus};
+/// use std::time::SystemTime;
+///
+/// // No event at all -> Done
+/// assert_eq!(classify_activity(None, SystemTime::now()), ActivityStatus::Done);
+///
+/// // Just happened -> Active
+/// assert_eq!(
+///     classify_activity(Some(SystemTime::now()), SystemTime::now()),
+///     ActivityStatus::Active,
+/// );
+/// ```
+#[must_use]
+pub fn classify_activity(last_event: Option<SystemTime>, now: SystemTime) -> ActivityStatus {
+    last_event.map_or(ActivityStatus::Done, |last| {
+        let elapsed = now.duration_since(last).unwrap_or(Duration::ZERO);
+        if elapsed <= ACTIVE_THRESHOLD {
+            ActivityStatus::Active
+        } else if elapsed <= IDLE_THRESHOLD {
+            ActivityStatus::Idle
+        } else {
+            ActivityStatus::Done
+        }
+    })
+}
+
 /// Information about a detected agent session.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct AgentSession {
     pub id: SessionId,
     pub agent_type: AgentType,
@@ -115,10 +205,93 @@ pub struct AgentSession {
     pub pid: Option<u32>,
     pub started_at: Option<SystemTime>,
     pub status: SessionStatus,
+    /// When the most recent event was received from this session.
+    #[serde(default)]
+    pub last_event_at: Option<SystemTime>,
+    /// Telemetry connection status.
+    #[serde(default)]
+    pub telemetry_status: TelemetryStatus,
+}
+
+impl AgentSession {
+    /// Creates a new `AgentSession` with the required fields; optional fields default to `None`/`Unknown`.
+    #[must_use]
+    pub const fn new(id: SessionId, agent_type: AgentType, status: SessionStatus) -> Self {
+        Self {
+            id,
+            agent_type,
+            model: None,
+            session_name: None,
+            working_dir: None,
+            pane_id: None,
+            pid: None,
+            started_at: None,
+            status,
+            last_event_at: None,
+            telemetry_status: TelemetryStatus::Unknown,
+        }
+    }
+
+    /// Sets the model.
+    #[must_use]
+    pub fn with_model(mut self, model: Option<String>) -> Self {
+        self.model = model;
+        self
+    }
+
+    /// Sets the session name.
+    #[must_use]
+    pub fn with_session_name(mut self, name: Option<String>) -> Self {
+        self.session_name = name;
+        self
+    }
+
+    /// Sets the working directory.
+    #[must_use]
+    pub fn with_working_dir(mut self, dir: Option<PathBuf>) -> Self {
+        self.working_dir = dir;
+        self
+    }
+
+    /// Sets the pane ID.
+    #[must_use]
+    pub fn with_pane_id(mut self, pane_id: Option<String>) -> Self {
+        self.pane_id = pane_id;
+        self
+    }
+
+    /// Sets the PID.
+    #[must_use]
+    pub const fn with_pid(mut self, pid: Option<u32>) -> Self {
+        self.pid = pid;
+        self
+    }
+
+    /// Sets the started-at time.
+    #[must_use]
+    pub const fn with_started_at(mut self, started_at: Option<SystemTime>) -> Self {
+        self.started_at = started_at;
+        self
+    }
+
+    /// Sets the last-event-at time.
+    #[must_use]
+    pub const fn with_last_event_at(mut self, last_event_at: Option<SystemTime>) -> Self {
+        self.last_event_at = last_event_at;
+        self
+    }
+
+    /// Sets the telemetry status.
+    #[must_use]
+    pub const fn with_telemetry_status(mut self, telemetry_status: TelemetryStatus) -> Self {
+        self.telemetry_status = telemetry_status;
+        self
+    }
 }
 
 /// Metrics for a session at a point in time.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct SessionMetrics {
     /// Total tokens used in the session (input + output).
     pub token_count: u64,
@@ -136,6 +309,15 @@ pub struct SessionMetrics {
     pub duration: Option<Duration>,
     /// Number of commands/tool calls executed.
     pub command_count: u64,
+    /// Lines of code added during this session.
+    #[serde(default)]
+    pub lines_added: u64,
+    /// Lines of code removed during this session.
+    #[serde(default)]
+    pub lines_removed: u64,
+    /// Fraction of API requests served from cache (0.0 - 1.0).
+    #[serde(default)]
+    pub cache_hit_rate: Option<f64>,
 }
 
 /// Validation issue found in metrics.
@@ -208,6 +390,9 @@ impl SessionMetrics {
                 cpu_percent: sanitized_cpu,
                 duration,
                 command_count,
+                lines_added: 0,
+                lines_removed: 0,
+                cache_hit_rate: None,
             },
             issues,
         )
@@ -251,19 +436,22 @@ impl SessionMetrics {
 
     /// Returns a sanitized copy with invalid values fixed.
     ///
-    /// - NaN/Infinity cost → None
-    /// - Negative cost → 0.0
-    /// - NaN/Infinity CPU → None
-    /// - Out-of-range CPU → clamped to [0, 100]
+    /// - NaN/Infinity cost -> None
+    /// - Negative cost -> 0.0
+    /// - NaN/Infinity CPU -> None
+    /// - Out-of-range CPU -> clamped to [0, 100]
     #[must_use]
     pub fn sanitize(&self) -> Self {
-        let (sanitized, _) = Self::new(
+        let (mut sanitized, _) = Self::new(
             self.token_count,
             self.cost_usd,
             self.cpu_percent,
             self.duration,
             self.command_count,
         );
+        sanitized.lines_added = self.lines_added;
+        sanitized.lines_removed = self.lines_removed;
+        sanitized.cache_hit_rate = self.cache_hit_rate;
         sanitized
     }
 }
@@ -443,6 +631,9 @@ mod tests {
             cpu_percent: Some(200.0),
             duration: None,
             command_count: 0,
+            lines_added: 0,
+            lines_removed: 0,
+            cache_hit_rate: None,
         };
         let issues = metrics.validate();
         assert_eq!(issues.len(), 2);
@@ -457,6 +648,9 @@ mod tests {
             cpu_percent: Some(150.0),
             duration: Some(Duration::from_secs(30)),
             command_count: 5,
+            lines_added: 42,
+            lines_removed: 10,
+            cache_hit_rate: Some(0.75),
         };
         let sanitized = metrics.sanitize();
         assert_eq!(sanitized.cost_usd, Some(0.0));
@@ -465,6 +659,9 @@ mod tests {
         // Other fields preserved
         assert_eq!(sanitized.token_count, 100);
         assert_eq!(sanitized.command_count, 5);
+        assert_eq!(sanitized.lines_added, 42);
+        assert_eq!(sanitized.lines_removed, 10);
+        assert_eq!(sanitized.cache_hit_rate, Some(0.75));
     }
 
     #[test]
@@ -491,6 +688,177 @@ mod tests {
             MetricsValidationIssue::CpuOutOfRange(150.0).to_string(),
             "cpu_percent out of range [0,100]: 150"
         );
+    }
+
+    #[test]
+    fn test_session_metrics_new_fields_default() {
+        let (metrics, _) = SessionMetrics::new(100, Some(1.0), None, None, 5);
+        assert_eq!(metrics.lines_added, 0);
+        assert_eq!(metrics.lines_removed, 0);
+        assert_eq!(metrics.cache_hit_rate, None);
+    }
+
+    // -- TelemetryStatus --
+
+    #[test]
+    fn telemetry_status_default_is_unknown() {
+        assert_eq!(TelemetryStatus::default(), TelemetryStatus::Unknown);
+    }
+
+    #[test]
+    fn telemetry_status_display() {
+        assert_eq!(TelemetryStatus::Connected.to_string(), "connected");
+        assert_eq!(TelemetryStatus::WrongPort.to_string(), "wrong_port");
+        assert_eq!(TelemetryStatus::NotConfigured.to_string(), "not_configured");
+        assert_eq!(TelemetryStatus::Unknown.to_string(), "unknown");
+    }
+
+    #[test]
+    fn telemetry_status_serde_roundtrip() -> Result<(), Box<dyn std::error::Error>> {
+        let variants = [
+            TelemetryStatus::Connected,
+            TelemetryStatus::WrongPort,
+            TelemetryStatus::NotConfigured,
+            TelemetryStatus::Unknown,
+        ];
+        for v in variants {
+            let json = serde_json::to_string(&v)?;
+            let parsed: TelemetryStatus = serde_json::from_str(&json)?;
+            assert_eq!(parsed, v);
+        }
+        Ok(())
+    }
+
+    // -- ActivityStatus --
+
+    #[test]
+    fn activity_status_display() {
+        assert_eq!(ActivityStatus::Active.to_string(), "active");
+        assert_eq!(ActivityStatus::Idle.to_string(), "idle");
+        assert_eq!(ActivityStatus::Done.to_string(), "done");
+    }
+
+    #[test]
+    fn activity_status_serde_roundtrip() -> Result<(), Box<dyn std::error::Error>> {
+        for v in [
+            ActivityStatus::Active,
+            ActivityStatus::Idle,
+            ActivityStatus::Done,
+        ] {
+            let json = serde_json::to_string(&v)?;
+            let parsed: ActivityStatus = serde_json::from_str(&json)?;
+            assert_eq!(parsed, v);
+        }
+        Ok(())
+    }
+
+    // -- classify_activity --
+
+    #[test]
+    fn classify_activity_none_is_done() {
+        assert_eq!(
+            classify_activity(None, SystemTime::now()),
+            ActivityStatus::Done
+        );
+    }
+
+    #[test]
+    fn classify_activity_just_now_is_active() {
+        let now = SystemTime::now();
+        assert_eq!(classify_activity(Some(now), now), ActivityStatus::Active);
+    }
+
+    #[test]
+    fn classify_activity_10_sec_ago_is_active() {
+        let now = SystemTime::now();
+        let last = now - Duration::from_secs(10);
+        assert_eq!(classify_activity(Some(last), now), ActivityStatus::Active);
+    }
+
+    #[test]
+    fn classify_activity_30_sec_boundary_is_active() {
+        let now = SystemTime::now();
+        let last = now - Duration::from_secs(30);
+        assert_eq!(classify_activity(Some(last), now), ActivityStatus::Active);
+    }
+
+    #[test]
+    fn classify_activity_31_sec_is_idle() {
+        let now = SystemTime::now();
+        let last = now - Duration::from_secs(31);
+        assert_eq!(classify_activity(Some(last), now), ActivityStatus::Idle);
+    }
+
+    #[test]
+    fn classify_activity_2_min_is_idle() {
+        let now = SystemTime::now();
+        let last = now - Duration::from_secs(120);
+        assert_eq!(classify_activity(Some(last), now), ActivityStatus::Idle);
+    }
+
+    #[test]
+    fn classify_activity_5_min_boundary_is_idle() {
+        let now = SystemTime::now();
+        let last = now - Duration::from_secs(300);
+        assert_eq!(classify_activity(Some(last), now), ActivityStatus::Idle);
+    }
+
+    #[test]
+    fn classify_activity_301_sec_is_done() {
+        let now = SystemTime::now();
+        let last = now - Duration::from_secs(301);
+        assert_eq!(classify_activity(Some(last), now), ActivityStatus::Done);
+    }
+
+    #[test]
+    fn classify_activity_1_hour_is_done() {
+        let now = SystemTime::now();
+        let last = now - Duration::from_secs(3600);
+        assert_eq!(classify_activity(Some(last), now), ActivityStatus::Done);
+    }
+
+    // -- AgentSession with new fields --
+
+    #[test]
+    fn agent_session_new_fields_serde() -> Result<(), Box<dyn std::error::Error>> {
+        let session = AgentSession {
+            id: SessionId::new_unchecked("test"),
+            agent_type: AgentType::Claude,
+            model: None,
+            session_name: None,
+            working_dir: None,
+            pane_id: None,
+            pid: None,
+            started_at: None,
+            status: SessionStatus::Active,
+            last_event_at: Some(SystemTime::now()),
+            telemetry_status: TelemetryStatus::Connected,
+        };
+        let json = serde_json::to_string(&session)?;
+        let parsed: AgentSession = serde_json::from_str(&json)?;
+        assert_eq!(parsed.telemetry_status, TelemetryStatus::Connected);
+        assert!(parsed.last_event_at.is_some());
+        Ok(())
+    }
+
+    #[test]
+    fn agent_session_deserialize_without_new_fields() -> Result<(), Box<dyn std::error::Error>> {
+        // Simulate JSON from an older version without the new fields
+        let json = r#"{
+            "id": "test",
+            "agent_type": "claude",
+            "model": null,
+            "session_name": null,
+            "working_dir": null,
+            "pane_id": null,
+            "pid": null,
+            "started_at": null,
+            "status": "active"
+        }"#;
+        let parsed: AgentSession = serde_json::from_str(json)?;
+        assert_eq!(parsed.last_event_at, None);
+        assert_eq!(parsed.telemetry_status, TelemetryStatus::Unknown);
+        Ok(())
     }
 
     mod proptests {

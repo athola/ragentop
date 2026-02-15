@@ -9,6 +9,7 @@ Track sessions, metrics, and command history across Claude Code and other AI ass
 When working with AI coding agents via SSH or in terminal multiplexers, you need visibility into what's happening without leaving your workflow. ragentop provides:
 
 - **Real-time metrics** — Token usage, cost estimates, session duration
+- **Cost monitoring** — Per-model pricing, burn-rate tracking, budget alerts
 - **Multi-agent support** — Claude Code, Codex CLI, Copilot, Gemini CLI, Qwen Code
 - **Command history** — Tool calls with configurable depth (tool-only → full conversation)
 - **Versioned state** — Merkle DAG storage for session history and replay
@@ -17,11 +18,11 @@ When working with AI coding agents via SSH or in terminal multiplexers, you need
 
 ## Status
 
-**Current version**: v0.1.0-dev (MVP in progress)
+**Current version**: v0.1.0
 
 | Component | Status |
 |-----------|--------|
-| ragentop-core | ✓ Types, traits, DAG, multiplexer, protocol |
+| ragentop-core | ✓ Types, traits, DAG, multiplexer, protocol, alerts, cost tracking |
 | adapter-claude | ✓ Detection + metrics + parsing |
 | adapter-codex | ✓ Detection + history parsing |
 | adapter-copilot | ✓ Detection |
@@ -29,8 +30,8 @@ When working with AI coding agents via SSH or in terminal multiplexers, you need
 | adapter-qwen | ✓ Detection + parsing |
 | ragentop-daemon | ✓ Socket API, sessions, tmux/zellij |
 | ragentop-tui | ✓ Dashboard + input handling |
-| ragentop-cli | ✓ daemon/tui subcommands |
-| ragentop-web | Scaffold (deferred to v0.2.0) |
+| ragentop-cli | ✓ detect/status/tui/web/daemon subcommands |
+| ragentop-web | ✓ Axum server + browser launch |
 
 ## Installation
 
@@ -45,14 +46,20 @@ Requires Rust 1.75+ (uses `async fn` in traits).
 ## Usage
 
 ```bash
-# Start the background daemon
-ragentop daemon start
+# Detect all agent sessions on this machine
+ragentop detect
+
+# Detect with full detail
+ragentop detect --verbose
+
+# Show tracked session status
+ragentop status
+
+# Start the web dashboard (opens browser)
+ragentop web
 
 # Launch the TUI dashboard
 ragentop tui
-
-# List active sessions
-ragentop list
 
 # Get help
 ragentop --help
@@ -72,7 +79,8 @@ Hybrid Hexagonal + Functional Core design:
 ├─────────────────────────────────────────────┤
 │           FUNCTIONAL CORE                   │
 │  ragentop-core (pure functions, no I/O)     │
-│  types · traits · DAG ops · config          │
+│  types · traits · DAG · config · alerts     │
+│  pricing · burnrate · stats · normalize     │
 └─────────────────────────────────────────────┘
 ```
 

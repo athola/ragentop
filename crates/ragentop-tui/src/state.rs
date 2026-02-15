@@ -105,17 +105,12 @@ mod tests {
     use ragentop_core::{AgentType, SessionId, SessionStatus};
 
     fn make_session(name: &str) -> AgentSession {
-        AgentSession {
-            id: SessionId::new_unchecked(name),
-            agent_type: AgentType::Claude,
-            model: None,
-            session_name: Some(name.to_string()),
-            working_dir: None,
-            pane_id: None,
-            pid: None,
-            started_at: None,
-            status: SessionStatus::Active,
-        }
+        AgentSession::new(
+            SessionId::new_unchecked(name),
+            AgentType::Claude,
+            SessionStatus::Active,
+        )
+        .with_session_name(Some(name.to_string()))
     }
 
     #[test]

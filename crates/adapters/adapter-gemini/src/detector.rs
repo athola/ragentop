@@ -56,17 +56,12 @@ pub fn detect_sessions(config_dir: &Path) -> Result<Vec<AgentSession>> {
             };
             let started_at = history_file.metadata().ok().and_then(|m| m.modified().ok());
 
-            sessions.push(AgentSession {
-                id: SessionId::new_unchecked(id),
-                agent_type: AgentType::Gemini,
-                model: Some("gemini-2.0-flash".to_string()),
-                session_name: None,
-                working_dir: Some(session_dir),
-                pane_id: None,
-                pid: None,
-                started_at,
-                status,
-            });
+            sessions.push(
+                AgentSession::new(SessionId::new_unchecked(id), AgentType::Gemini, status)
+                    .with_model(Some("gemini-2.0-flash".to_string()))
+                    .with_working_dir(Some(session_dir))
+                    .with_started_at(started_at),
+            );
         }
     }
     Ok(sessions)
