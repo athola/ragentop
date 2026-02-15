@@ -11,12 +11,12 @@ categories = ["development-tools"]
 
 [dependencies]
 ragentop-core = { path = "../../ragentop-core" }
+adapter-common = { path = "../adapter-common" }
 serde.workspace = true
 serde_json.workspace = true
 tokio.workspace = true
 tracing.workspace = true
 dirs.workspace = true
-sysinfo = "0.32"
 
 [dev-dependencies]
 tempfile.workspace = true

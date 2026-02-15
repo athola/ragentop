@@ -6,6 +6,7 @@ version = 4
 name = "adapter-claude"
 version = "0.1.0"
 dependencies = [
+ "adapter-common",
  "dirs",
  "ragentop-core",
  "serde",
@@ -20,6 +21,7 @@ dependencies = [
 name = "adapter-codex"
 version = "0.1.0"
 dependencies = [
+ "adapter-common",
  "dirs",
  "ragentop-core",
  "serde",
@@ -30,14 +32,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "adapter-common"
+version = "0.1.0"
+dependencies = [
+ "sysinfo",
+ "tempfile",
+]
+
+[[package]]
 name = "adapter-copilot"
 version = "0.1.0"
 dependencies = [
+ "adapter-common",
  "dirs",
  "ragentop-core",
  "serde",
  "serde_json",
- "sysinfo",
  "tempfile",
  "tokio",
  "tracing",
@@ -47,11 +57,11 @@ dependencies = [
 name = "adapter-gemini"
 version = "0.1.0"
 dependencies = [
+ "adapter-common",
  "dirs",
  "ragentop-core",
  "serde",
  "serde_json",
- "sysinfo",
  "tempfile",
  "tokio",
  "tracing",
@@ -61,11 +71,11 @@ dependencies = [
 name = "adapter-qwen"
 version = "0.1.0"
 dependencies = [
+ "adapter-common",
  "dirs",
  "ragentop-core",
  "serde",
  "serde_json",
- "sysinfo",
  "tempfile",
  "tokio",
  "tracing",

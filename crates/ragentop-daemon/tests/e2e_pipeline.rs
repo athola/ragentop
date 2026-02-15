@@ -123,7 +123,7 @@ fn test_full_pipeline_adapter_to_protocol() -> Result<(), Box<dyn std::error::Er
     )?;
     assert_eq!(commands.len(), 2);
 
-    let node = StateNode::new(commands, None);
+    let node = StateNode::new(commands, None, SystemTime::now());
     let hash = store.store(&node)?;
 
     let loaded = store.load(&hash)?.ok_or("node should exist")?;
@@ -199,13 +199,17 @@ fn test_dag_store_history_chain() -> Result<(), Box<dyn std::error::Error>> {
         result_summary: None,
     };
 
-    let root = StateNode::new(vec![cmd("Bash")], None);
+    let root = StateNode::new(vec![cmd("Bash")], None, SystemTime::now());
     let root_hash = store.store(&root)?;
 
-    let snap2 = StateNode::new(vec![cmd("Read"), cmd("Edit")], Some(root_hash));
+    let snap2 = StateNode::new(
+        vec![cmd("Read"), cmd("Edit")],
+        Some(root_hash),
+        SystemTime::now(),
+    );
     let snap2_hash = store.store(&snap2)?;
 
-    let snap3 = StateNode::new(vec![cmd("Write")], Some(snap2_hash));
+    let snap3 = StateNode::new(vec![cmd("Write")], Some(snap2_hash), SystemTime::now());
     let snap3_hash = store.store(&snap3)?;
 
     // Walk full history from latest

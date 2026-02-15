@@ -78,7 +78,7 @@ mod tests {
         let tmp = TempDir::new()?;
         let store = SledDagStore::open(tmp.path())?;
 
-        let node = StateNode::new(vec![], None);
+        let node = StateNode::new(vec![], None, SystemTime::now());
         let hash = store.store(&node)?;
 
         let loaded = store.load(&hash)?.ok_or("node should exist")?;
@@ -104,13 +104,21 @@ mod tests {
         let tmp = TempDir::new()?;
         let store = SledDagStore::open(tmp.path())?;
 
-        let root = StateNode::new(vec![make_command("tool1")], None);
+        let root = StateNode::new(vec![make_command("tool1")], None, SystemTime::now());
         let root_hash = store.store(&root)?;
 
-        let child = StateNode::new(vec![make_command("tool2")], Some(root_hash));
+        let child = StateNode::new(
+            vec![make_command("tool2")],
+            Some(root_hash),
+            SystemTime::now(),
+        );
         let child_hash = store.store(&child)?;
 
-        let grandchild = StateNode::new(vec![make_command("tool3")], Some(child_hash));
+        let grandchild = StateNode::new(
+            vec![make_command("tool3")],
+            Some(child_hash),
+            SystemTime::now(),
+        );
         let grandchild_hash = store.store(&grandchild)?;
 
         let nodes: Vec<_> = store.walk_history(&grandchild_hash).collect();

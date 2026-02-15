@@ -132,6 +132,55 @@ impl Default for AlertThresholds {
     }
 }
 
+impl AlertThresholds {
+    /// Validate that all threshold values are sensible.
+    ///
+    /// Returns `Ok(())` if all fields are valid, or `Err(String)` describing
+    /// the first invalid field found.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error string if any f64 field is negative, NaN, or infinite,
+    /// if `rejection_rate` is outside `[0.0, 1.0]`, or if `context_pressure_pct`
+    /// exceeds 100.
+    pub fn validate(&self) -> Result<(), String> {
+        if !self.cost_surge_per_hour.is_finite() || self.cost_surge_per_hour < 0.0 {
+            return Err(format!(
+                "cost_surge_per_hour must be finite and non-negative, got {}",
+                self.cost_surge_per_hour
+            ));
+        }
+        if !self.runaway_token_velocity.is_finite() || self.runaway_token_velocity < 0.0 {
+            return Err(format!(
+                "runaway_token_velocity must be finite and non-negative, got {}",
+                self.runaway_token_velocity
+            ));
+        }
+        if !self.rejection_rate.is_finite()
+            || self.rejection_rate < 0.0
+            || self.rejection_rate > 1.0
+        {
+            return Err(format!(
+                "rejection_rate must be finite and between 0.0 and 1.0, got {}",
+                self.rejection_rate
+            ));
+        }
+        if !self.session_cost_threshold.is_finite() || self.session_cost_threshold < 0.0 {
+            return Err(format!(
+                "session_cost_threshold must be finite and non-negative, got {}",
+                self.session_cost_threshold
+            ));
+        }
+        if self.context_pressure_pct > 100 {
+            return Err(format!(
+                "context_pressure_pct must be <= 100, got {}",
+                self.context_pressure_pct
+            ));
+        }
+        Ok(())
+    }
+}
+
 impl Alert {
     /// Creates a new `Alert`.
     #[must_use]
@@ -436,5 +485,67 @@ mod tests {
     #[test]
     fn session_cost_just_above_threshold() {
         assert_eq!(check_session_cost(5.01, 5.0), Some(AlertRule::SessionCost));
+    }
+
+    // -- AlertThresholds::validate --
+
+    #[test]
+    fn validate_default_thresholds_ok() {
+        let t = AlertThresholds::default();
+        assert!(t.validate().is_ok());
+    }
+
+    #[test]
+    fn validate_negative_cost_surge() {
+        let t = AlertThresholds {
+            cost_surge_per_hour: -1.0,
+            ..AlertThresholds::default()
+        };
+        assert!(t.validate().is_err());
+    }
+
+    #[test]
+    fn validate_nan_session_cost() {
+        let t = AlertThresholds {
+            session_cost_threshold: f64::NAN,
+            ..AlertThresholds::default()
+        };
+        assert!(t.validate().is_err());
+    }
+
+    #[test]
+    fn validate_infinite_token_velocity() {
+        let t = AlertThresholds {
+            runaway_token_velocity: f64::INFINITY,
+            ..AlertThresholds::default()
+        };
+        assert!(t.validate().is_err());
+    }
+
+    #[test]
+    fn validate_rejection_rate_above_one() {
+        let t = AlertThresholds {
+            rejection_rate: 1.5,
+            ..AlertThresholds::default()
+        };
+        assert!(t.validate().is_err());
+    }
+
+    #[test]
+    fn validate_rejection_rate_negative() {
+        let t = AlertThresholds {
+            rejection_rate: -0.1,
+            ..AlertThresholds::default()
+        };
+        assert!(t.validate().is_err());
+    }
+
+    #[test]
+    fn validate_context_pressure_over_100() {
+        let t = AlertThresholds {
+            context_pressure_pct: 101,
+            ..AlertThresholds::default()
+        };
+        assert!(t.validate().is_err());
     }
 }

@@ -76,6 +76,10 @@ impl SessionId {
     /// # Safety
     /// This bypasses validation. Use only when the ID is known to be valid
     /// (e.g., from trusted internal sources or deserialization).
+    ///
+    /// Callers must ensure the ID is non-empty. This method exists for
+    /// performance in internal code paths where the ID has already been
+    /// validated or comes from a trusted source.
     #[must_use]
     pub fn new_unchecked(id: impl Into<String>) -> Self {
         Self(id.into())

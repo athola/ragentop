@@ -1,28 +1,12 @@
 //! Session detection for Codex CLI.
 
+use adapter_common::{is_process_running, is_recently_modified, ACTIVE_THRESHOLD};
 use ragentop_core::{
     AgentSession, AgentType, Command, CommandStatus, Result, SessionId, SessionStatus,
 };
 use serde::Deserialize;
 use std::path::Path;
 use std::time::{Duration, SystemTime};
-
-const ACTIVE_THRESHOLD: Duration = Duration::from_secs(300);
-
-fn is_process_running(name: &str) -> bool {
-    std::process::Command::new("pgrep")
-        .args(["-f", name])
-        .output()
-        .is_ok_and(|o| o.status.success())
-}
-
-fn is_recently_modified(path: &Path, threshold: Duration) -> bool {
-    path.metadata()
-        .and_then(|m| m.modified())
-        .ok()
-        .and_then(|t| SystemTime::now().duration_since(t).ok())
-        .is_some_and(|age| age < threshold)
-}
 
 #[derive(Deserialize)]
 struct CodexSession {
@@ -283,22 +267,5 @@ mod tests {
         let cmds = parse_history(&codex_dir, 10)?;
         assert_eq!(cmds.len(), 1);
         Ok(())
-    }
-
-    #[test]
-    fn test_is_recently_modified_true() -> std::result::Result<(), Box<dyn std::error::Error>> {
-        let dir = tempdir()?;
-        let file = dir.path().join("recent");
-        fs::write(&file, "data")?;
-        assert!(is_recently_modified(&file, Duration::from_secs(60)));
-        Ok(())
-    }
-
-    #[test]
-    fn test_is_recently_modified_nonexistent() {
-        assert!(!is_recently_modified(
-            Path::new("/nonexistent/file"),
-            Duration::from_secs(60)
-        ));
     }
 }

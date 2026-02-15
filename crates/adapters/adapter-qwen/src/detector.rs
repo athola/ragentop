@@ -1,28 +1,9 @@
 //! Session detection for Qwen CLI.
 
+use adapter_common::{is_process_running, is_recently_modified, ACTIVE_THRESHOLD};
 use ragentop_core::{AgentSession, AgentType, Result, SessionId, SessionStatus};
 use serde::Deserialize;
 use std::path::Path;
-use std::time::{Duration, SystemTime};
-use sysinfo::{ProcessRefreshKind, RefreshKind, System};
-
-const ACTIVE_THRESHOLD: Duration = Duration::from_secs(300);
-
-fn is_process_running(name: &str) -> bool {
-    let s =
-        System::new_with_specifics(RefreshKind::new().with_processes(ProcessRefreshKind::new()));
-    s.processes()
-        .values()
-        .any(|p| p.name().to_string_lossy().contains(name))
-}
-
-fn is_recently_modified(path: &Path, threshold: Duration) -> bool {
-    path.metadata()
-        .and_then(|m| m.modified())
-        .ok()
-        .and_then(|t| SystemTime::now().duration_since(t).ok())
-        .is_some_and(|age| age < threshold)
-}
 
 #[derive(Deserialize)]
 struct QwenLogEntry {

@@ -2,7 +2,7 @@
 
 ## Overview
 
-The ragentop Makefile provides a comprehensive interface for building, testing, and demonstrating the AI agent monitoring tool. It follows standard Rust conventions while adding project-specific targets for the workspace architecture.
+The ragentop Makefile provides a full interface for building, testing, and demonstrating the AI agent monitoring tool. It follows standard Rust conventions while adding project-specific targets for the workspace architecture.
 
 ## Quick Reference
 

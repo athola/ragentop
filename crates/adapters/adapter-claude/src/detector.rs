@@ -1,13 +1,9 @@
 //! Session detection for Claude Code.
 
+use adapter_common::ACTIVE_THRESHOLD;
 use ragentop_core::{AgentSession, AgentType, Result, SessionId, SessionStatus};
 use std::path::Path;
-use std::time::{Duration, SystemTime};
 use sysinfo::{ProcessRefreshKind, RefreshKind, System};
-
-/// Sessions modified within this duration are considered "Active".
-/// 5 minutes accounts for Claude's batched writes and user think time.
-const ACTIVE_THRESHOLD: Duration = Duration::from_secs(300);
 
 /// Get working directories of running Claude processes.
 ///
@@ -120,9 +116,8 @@ pub fn detect_sessions(config_dir: &Path) -> Result<Vec<AgentSession>> {
 
                     // Active if: running process OR modified within threshold
                     let is_process_active = active_dirs.contains(&working_dir);
-                    let is_recently_modified = started_at
-                        .and_then(|time| SystemTime::now().duration_since(time).ok())
-                        .is_some_and(|age| age < ACTIVE_THRESHOLD);
+                    let is_recently_modified =
+                        adapter_common::is_recently_modified(&path, ACTIVE_THRESHOLD);
 
                     let status = if is_process_active || is_recently_modified {
                         SessionStatus::Active
