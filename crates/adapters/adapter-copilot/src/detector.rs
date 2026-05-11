@@ -25,25 +25,35 @@ pub fn detect_sessions(config_dir: &Path) -> Result<Vec<AgentSession>> {
     let recently_modified = is_recently_modified(&config_file, ACTIVE_THRESHOLD);
 
     let contents = std::fs::read_to_string(&config_file)?;
-    if let Ok(config) = serde_json::from_str::<CopilotConfig>(&contents) {
-        if let Some(session_id) = config.session_id {
-            let status = if process_active || recently_modified {
-                SessionStatus::Active
-            } else {
-                SessionStatus::Idle
-            };
-            let started_at = config_file.metadata().ok().and_then(|m| m.modified().ok());
-
-            return Ok(vec![AgentSession::new(
-                SessionId::new_unchecked(session_id),
-                AgentType::Copilot,
-                status,
-            )
-            .with_model(Some("gpt-4".to_string()))
-            .with_started_at(started_at)]);
+    let config = match serde_json::from_str::<CopilotConfig>(&contents) {
+        Ok(c) => c,
+        Err(e) => {
+            tracing::warn!(
+                path = %config_file.display(),
+                error = %e,
+                "skipping malformed copilot config.json"
+            );
+            return Ok(vec![]);
         }
-    }
-    Ok(vec![])
+    };
+    let Some(session_id) = config.session_id else {
+        return Ok(vec![]);
+    };
+
+    let status = if process_active || recently_modified {
+        SessionStatus::Active
+    } else {
+        SessionStatus::Idle
+    };
+    let started_at = config_file.metadata().ok().and_then(|m| m.modified().ok());
+
+    Ok(vec![AgentSession::new(
+        SessionId::new_unchecked(session_id),
+        AgentType::Copilot,
+        status,
+    )
+    .with_model(Some("gpt-4".to_string()))
+    .with_started_at(started_at)])
 }
 
 #[cfg(test)]

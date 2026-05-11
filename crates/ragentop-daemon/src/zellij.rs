@@ -63,8 +63,60 @@ impl Multiplexer for ZellijAdapter {
         validate_pane_id(pane_id)?;
         validate_no_shell_metacharacters(name, "name")?;
 
-        // Zellij rename-pane operates on the focused pane
-        // We need to focus the pane first, then rename
+        // Zellij's CLI exposes no "focus pane by id" action — `rename-pane`
+        // always operates on the currently-focused pane. We cycle through
+        // `focus-next-pane` until the requested pane becomes active, then
+        // rename. Aborts if cycling fails to advance focus (e.g. only one
+        // pane exists and it isn't the target).
+        let panes = self.list_panes()?;
+        let target_exists = panes.iter().any(|p| p.id == pane_id);
+        if !target_exists {
+            return Err(Error::Adapter(format!(
+                "zellij: pane {pane_id} not found ({} panes available)",
+                panes.len()
+            )));
+        }
+
+        let max_cycles = panes.len();
+        let mut last_focused: Option<String> =
+            panes.iter().find(|p| p.active).map(|p| p.id.clone());
+
+        if last_focused.as_deref() != Some(pane_id) {
+            for _ in 0..max_cycles {
+                let output = Command::new("zellij")
+                    .args(["action", "focus-next-pane"])
+                    .output()
+                    .map_err(|e| {
+                        Error::Adapter(format!("Failed to run zellij focus-next-pane: {e}"))
+                    })?;
+                if !output.status.success() {
+                    let stderr = String::from_utf8_lossy(&output.stderr);
+                    return Err(Error::Adapter(format!(
+                        "zellij focus-next-pane failed: {stderr}"
+                    )));
+                }
+
+                let now_panes = self.list_panes()?;
+                let now_focused = now_panes.iter().find(|p| p.active).map(|p| p.id.clone());
+                if now_focused.as_deref() == Some(pane_id) {
+                    last_focused = now_focused;
+                    break;
+                }
+                if now_focused == last_focused {
+                    return Err(Error::Adapter(format!(
+                        "zellij: focus-next-pane did not advance focus from {last_focused:?}"
+                    )));
+                }
+                last_focused = now_focused;
+            }
+        }
+
+        if last_focused.as_deref() != Some(pane_id) {
+            return Err(Error::Adapter(format!(
+                "zellij: could not focus pane {pane_id} after {max_cycles} cycle(s)"
+            )));
+        }
+
         let output = Command::new("zellij")
             .args(["action", "rename-pane", name])
             .output()

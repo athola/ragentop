@@ -32,33 +32,56 @@ pub fn detect_sessions(config_dir: &Path) -> Result<Vec<AgentSession>> {
     for entry in std::fs::read_dir(&sessions_dir)? {
         let entry = entry?;
         let path = entry.path();
-        if path.extension().is_some_and(|e| e == "json") {
-            if let Ok(contents) = std::fs::read_to_string(&path) {
-                if let Ok(data) = serde_json::from_str::<CodexSession>(&contents) {
-                    let id = data.id.unwrap_or_else(|| {
-                        path.file_stem()
-                            .map(|s| s.to_string_lossy().to_string())
-                            .unwrap_or_default()
-                    });
-
-                    let recently_modified = is_recently_modified(&path, ACTIVE_THRESHOLD);
-                    let status = if process_active || recently_modified {
-                        SessionStatus::Active
-                    } else {
-                        SessionStatus::Idle
-                    };
-
-                    let started_at = path.metadata().ok().and_then(|m| m.modified().ok());
-
-                    sessions.push(
-                        AgentSession::new(SessionId::new_unchecked(id), AgentType::Codex, status)
-                            .with_model(data.model)
-                            .with_working_dir(data.project_path.map(std::path::PathBuf::from))
-                            .with_started_at(started_at),
-                    );
-                }
-            }
+        let Some(ext) = path.extension() else {
+            continue;
+        };
+        if ext != "json" {
+            continue;
         }
+        let contents = match std::fs::read_to_string(&path) {
+            Ok(c) => c,
+            Err(e) => {
+                tracing::warn!(
+                    path = %path.display(),
+                    error = %e,
+                    "skipping unreadable codex session file"
+                );
+                continue;
+            }
+        };
+        let data = match serde_json::from_str::<CodexSession>(&contents) {
+            Ok(d) => d,
+            Err(e) => {
+                tracing::warn!(
+                    path = %path.display(),
+                    error = %e,
+                    "skipping malformed codex session file"
+                );
+                continue;
+            }
+        };
+
+        let id = data.id.unwrap_or_else(|| {
+            path.file_stem()
+                .map(|s| s.to_string_lossy().to_string())
+                .unwrap_or_default()
+        });
+
+        let recently_modified = is_recently_modified(&path, ACTIVE_THRESHOLD);
+        let status = if process_active || recently_modified {
+            SessionStatus::Active
+        } else {
+            SessionStatus::Idle
+        };
+
+        let started_at = path.metadata().ok().and_then(|m| m.modified().ok());
+
+        sessions.push(
+            AgentSession::new(SessionId::new_unchecked(id), AgentType::Codex, status)
+                .with_model(data.model)
+                .with_working_dir(data.project_path.map(std::path::PathBuf::from))
+                .with_started_at(started_at),
+        );
     }
     Ok(sessions)
 }
@@ -101,29 +124,38 @@ pub fn parse_history(config_dir: &Path, limit: usize) -> Result<Vec<Command>> {
         if line.is_empty() {
             continue;
         }
-        if let Ok(entry) = serde_json::from_str::<HistoryEntry>(line) {
-            let tool = entry
-                .tool
-                .or(entry.command)
-                .unwrap_or_else(|| "unknown".to_string());
-            let args = entry.args.unwrap_or_default();
-            let status = match entry.status.as_deref() {
-                Some("failed" | "error") => CommandStatus::Failed,
-                Some("running") => CommandStatus::Running,
-                _ => CommandStatus::Success,
-            };
-            let timestamp = entry.timestamp.map_or_else(SystemTime::now, |ts| {
-                SystemTime::UNIX_EPOCH + Duration::from_secs_f64(ts)
-            });
+        let entry = match serde_json::from_str::<HistoryEntry>(line) {
+            Ok(e) => e,
+            Err(e) => {
+                tracing::warn!(
+                    file = %history_file.display(),
+                    error = %e,
+                    "skipping malformed codex history line"
+                );
+                continue;
+            }
+        };
+        let tool = entry
+            .tool
+            .or(entry.command)
+            .unwrap_or_else(|| "unknown".to_string());
+        let args = entry.args.unwrap_or_default();
+        let status = match entry.status.as_deref() {
+            Some("failed" | "error") => CommandStatus::Failed,
+            Some("running") => CommandStatus::Running,
+            _ => CommandStatus::Success,
+        };
+        let timestamp = entry.timestamp.map_or_else(SystemTime::now, |ts| {
+            SystemTime::UNIX_EPOCH + Duration::from_secs_f64(ts)
+        });
 
-            commands.push(Command {
-                timestamp,
-                tool,
-                args,
-                status,
-                result_summary: entry.result,
-            });
-        }
+        commands.push(Command {
+            timestamp,
+            tool,
+            args,
+            status,
+            result_summary: entry.result,
+        });
     }
     Ok(commands)
 }

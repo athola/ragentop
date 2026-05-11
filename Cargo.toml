@@ -70,6 +70,11 @@ cargo = { level = "warn", priority = -1 }
 # Allow multiple crate versions - caused by transitive dependencies we can't control
 multiple_crate_versions = "allow"
 
+# Allow Duration::from_secs(seconds) instead of from_mins/from_hours because
+# Duration::from_mins and Duration::from_hours were stabilized in Rust 1.85.
+# Workspace MSRV is 1.75. Revisit when bumping rust-version >= 1.85.
+duration_suboptimal_units = "allow"
+
 # Forbid panicking functions - require proper error handling
 unwrap_used = "deny"
 expect_used = "deny"
