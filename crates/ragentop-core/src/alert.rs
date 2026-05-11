@@ -6,7 +6,7 @@
 use serde::{Deserialize, Serialize};
 use std::time::{Duration, SystemTime};
 
-use crate::SessionId;
+use crate::{SessionId, UsdMicros};
 
 /// An alert that has been triggered.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -241,19 +241,26 @@ pub fn should_dedup(existing: &[Alert], candidate: &Alert, window: Duration) -> 
 
 /// Check if a session's total cost exceeds the configured threshold.
 ///
+/// `total_cost` is a [`UsdMicros`] so accumulated session cost flows
+/// through this function without round-tripping through `f64` (and
+/// without losing the exact-micro-dollar guarantee). `threshold` stays
+/// `f64` because it comes from human-authored TOML (`[alerts]
+/// session_cost_threshold`).
+///
 /// Returns `Some(AlertRule::SessionCost)` if the cost exceeds the threshold,
 /// `None` otherwise.
 ///
 /// # Examples
 /// ```
+/// use ragentop_core::UsdMicros;
 /// use ragentop_core::alert::{check_session_cost, AlertRule};
 ///
-/// assert!(check_session_cost(6.0, 5.0).is_some());
-/// assert!(check_session_cost(4.0, 5.0).is_none());
+/// assert!(check_session_cost(UsdMicros::from_dollars(6.0), 5.0).is_some());
+/// assert!(check_session_cost(UsdMicros::from_dollars(4.0), 5.0).is_none());
 /// ```
 #[must_use]
-pub fn check_session_cost(total_cost: f64, threshold: f64) -> Option<AlertRule> {
-    if total_cost > threshold {
+pub fn check_session_cost(total_cost: UsdMicros, threshold: f64) -> Option<AlertRule> {
+    if total_cost.as_f64() > threshold {
         Some(AlertRule::SessionCost)
     } else {
         None
@@ -465,27 +472,42 @@ mod tests {
 
     #[test]
     fn session_cost_exceeds_threshold() {
-        assert_eq!(check_session_cost(6.0, 5.0), Some(AlertRule::SessionCost));
+        assert_eq!(
+            check_session_cost(UsdMicros::from_dollars(6.0), 5.0),
+            Some(AlertRule::SessionCost)
+        );
     }
 
     #[test]
     fn session_cost_below_threshold() {
-        assert_eq!(check_session_cost(4.0, 5.0), None);
+        assert_eq!(check_session_cost(UsdMicros::from_dollars(4.0), 5.0), None);
     }
 
     #[test]
     fn session_cost_exactly_at_threshold() {
-        assert_eq!(check_session_cost(5.0, 5.0), None);
+        assert_eq!(check_session_cost(UsdMicros::from_dollars(5.0), 5.0), None);
     }
 
     #[test]
     fn session_cost_zero() {
-        assert_eq!(check_session_cost(0.0, 5.0), None);
+        assert_eq!(check_session_cost(UsdMicros::ZERO, 5.0), None);
     }
 
     #[test]
     fn session_cost_just_above_threshold() {
-        assert_eq!(check_session_cost(5.01, 5.0), Some(AlertRule::SessionCost));
+        assert_eq!(
+            check_session_cost(UsdMicros::from_dollars(5.01), 5.0),
+            Some(AlertRule::SessionCost)
+        );
+    }
+
+    #[test]
+    fn session_cost_accepts_typed_usd_micros() {
+        // Compile-time guarantee: the function takes UsdMicros, not raw f64.
+        // Wiring a SessionMetrics.cost_usd straight through (without
+        // .as_f64() at the call site) is the desired ergonomic.
+        let total = UsdMicros::from_dollars(7.5);
+        assert!(check_session_cost(total, 5.0).is_some());
     }
 
     // -- AlertThresholds::validate --
