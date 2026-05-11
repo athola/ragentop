@@ -74,11 +74,10 @@ pub fn detect_sessions(config_dir: &Path) -> Result<Vec<AgentSession>> {
         };
         let started_at = path.metadata().ok().and_then(|m| m.modified().ok());
 
-        sessions.push(
-            AgentSession::new(SessionId::new_unchecked(id), AgentType::Qwen, status)
-                .with_model(data.model.or_else(|| Some("qwen-coder".to_string())))
-                .with_started_at(started_at),
-        );
+        let mut session = AgentSession::new(SessionId::new_unchecked(id), AgentType::Qwen, status);
+        session.model = data.model.or_else(|| Some("qwen-coder".to_string()));
+        session.started_at = started_at;
+        sessions.push(session);
     }
     Ok(sessions)
 }

@@ -1,7 +1,7 @@
 //! Cost burn-rate analysis for agent sessions.
 //!
 //! Pure functions for computing cost trends, rate classification, and
-//! token velocity. Inspired by cc-top's burn-rate monitoring.
+//! token velocity.
 
 use crate::types::UsdMicros;
 use serde::{Deserialize, Serialize};
@@ -331,7 +331,7 @@ mod tests {
             trend: TrendDirection::Up,
             token_velocity: 150.0,
             per_model: vec![ModelBurnRate {
-                model: "claude-opus-4-6".to_string(),
+                model: "claude-opus-4-7".to_string(),
                 hourly_rate: 0.45,
                 total_cost: UsdMicros::from_dollars(1.23),
             }],
@@ -398,7 +398,7 @@ mod tests {
     #[test]
     fn model_burn_rate_serde_roundtrip() -> Result<(), Box<dyn std::error::Error>> {
         let mbr = ModelBurnRate {
-            model: "claude-opus-4-6".to_string(),
+            model: "claude-opus-4-7".to_string(),
             hourly_rate: 1.5,
             total_cost: UsdMicros::from_dollars(10.0),
         };
@@ -417,7 +417,7 @@ mod tests {
             token_velocity: 100.0,
             per_model: vec![
                 ModelBurnRate {
-                    model: "claude-opus-4-6".to_string(),
+                    model: "claude-opus-4-7".to_string(),
                     hourly_rate: 0.7,
                     total_cost: UsdMicros::from_dollars(3.5),
                 },

@@ -337,6 +337,19 @@ pub struct AgentSession {
 
 impl AgentSession {
     /// Creates a new `AgentSession` with the required fields; optional fields default to `None`/`Unknown`.
+    ///
+    /// Optional fields are `pub`, so callers set them by direct assignment after
+    /// construction:
+    ///
+    /// ```
+    /// use ragentop_core::{AgentSession, AgentType, SessionId, SessionStatus};
+    /// let mut session = AgentSession::new(
+    ///     SessionId::new_unchecked("sess-1"),
+    ///     AgentType::Claude,
+    ///     SessionStatus::Active,
+    /// );
+    /// session.model = Some("claude-opus-4-7".to_string());
+    /// ```
     #[must_use]
     pub const fn new(id: SessionId, agent_type: AgentType, status: SessionStatus) -> Self {
         Self {
@@ -352,62 +365,6 @@ impl AgentSession {
             last_event_at: None,
             telemetry_status: TelemetryStatus::Unknown,
         }
-    }
-
-    /// Sets the model.
-    #[must_use]
-    pub fn with_model(mut self, model: Option<String>) -> Self {
-        self.model = model;
-        self
-    }
-
-    /// Sets the session name.
-    #[must_use]
-    pub fn with_session_name(mut self, name: Option<String>) -> Self {
-        self.session_name = name;
-        self
-    }
-
-    /// Sets the working directory.
-    #[must_use]
-    pub fn with_working_dir(mut self, dir: Option<PathBuf>) -> Self {
-        self.working_dir = dir;
-        self
-    }
-
-    /// Sets the pane ID.
-    #[must_use]
-    pub fn with_pane_id(mut self, pane_id: Option<String>) -> Self {
-        self.pane_id = pane_id;
-        self
-    }
-
-    /// Sets the PID.
-    #[must_use]
-    pub const fn with_pid(mut self, pid: Option<u32>) -> Self {
-        self.pid = pid;
-        self
-    }
-
-    /// Sets the started-at time.
-    #[must_use]
-    pub const fn with_started_at(mut self, started_at: Option<SystemTime>) -> Self {
-        self.started_at = started_at;
-        self
-    }
-
-    /// Sets the last-event-at time.
-    #[must_use]
-    pub const fn with_last_event_at(mut self, last_event_at: Option<SystemTime>) -> Self {
-        self.last_event_at = last_event_at;
-        self
-    }
-
-    /// Sets the telemetry status.
-    #[must_use]
-    pub const fn with_telemetry_status(mut self, telemetry_status: TelemetryStatus) -> Self {
-        self.telemetry_status = telemetry_status;
-        self
     }
 }
 

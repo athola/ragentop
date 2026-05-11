@@ -1,7 +1,7 @@
 //! Alert rules and deduplication for agent monitoring.
 //!
 //! Pure types and functions for defining alert conditions, severity levels,
-//! and deduplication logic. Inspired by cc-top's alert system.
+//! and deduplication logic.
 
 use serde::{Deserialize, Serialize};
 use std::time::{Duration, SystemTime};
@@ -85,7 +85,8 @@ impl std::fmt::Display for Severity {
 
 /// Thresholds for triggering alerts.
 ///
-/// Defaults are based on cc-top's production values.
+/// Defaults are tuned for typical interactive coding sessions; override via
+/// `[alerts]` in `config.toml` for production workloads.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[non_exhaustive]
 #[serde(default)]

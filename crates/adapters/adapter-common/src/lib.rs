@@ -20,7 +20,15 @@ pub fn is_process_running(name: &str) -> bool {
 
 /// Check if a file at `path` was modified within the given `threshold` duration.
 ///
-/// Returns `false` if the file does not exist or its modification time cannot be read.
+/// On every supported platform (Linux, macOS, Windows), creating a file sets
+/// its `mtime` to the creation timestamp. As a result, a freshly-created
+/// session file — e.g. a new `.jsonl` opened when an agent starts — is
+/// classified as "recently modified" on the very first poll. Subsequent
+/// writes update `mtime`, so this function covers both new and updated
+/// files without a separate file-descriptor scan.
+///
+/// Returns `false` if the file does not exist or its modification time cannot
+/// be read.
 #[must_use]
 pub fn is_recently_modified(path: &Path, threshold: Duration) -> bool {
     path.metadata()

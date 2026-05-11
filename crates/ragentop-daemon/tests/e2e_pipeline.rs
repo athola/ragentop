@@ -82,17 +82,18 @@ impl Adapter for MockClaudeAdapter {
 }
 
 fn make_session(id: &str) -> AgentSession {
-    AgentSession::new(
+    let mut session = AgentSession::new(
         SessionId::new_unchecked(id),
         AgentType::Claude,
         SessionStatus::Active,
-    )
-    .with_model(Some("opus-4".to_string()))
-    .with_session_name(Some("test-project".to_string()))
-    .with_working_dir(Some(PathBuf::from("/home/user/project")))
-    .with_pane_id(Some("%1".to_string()))
-    .with_pid(Some(12345))
-    .with_started_at(Some(SystemTime::now()))
+    );
+    session.model = Some("opus-4".to_string());
+    session.session_name = Some("test-project".to_string());
+    session.working_dir = Some(PathBuf::from("/home/user/project"));
+    session.pane_id = Some("%1".to_string());
+    session.pid = Some(12345);
+    session.started_at = Some(SystemTime::now());
+    session
 }
 
 /// Full pipeline: adapter detects → tracker collects → store persists → protocol queries.

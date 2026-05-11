@@ -125,16 +125,15 @@ pub fn detect_sessions(config_dir: &Path) -> Result<Vec<AgentSession>> {
                         SessionStatus::Idle
                     };
 
-                    sessions.push(
-                        AgentSession::new(
-                            SessionId::new_unchecked(session_id),
-                            AgentType::Claude,
-                            status,
-                        )
-                        .with_session_name(Some(project_name.clone()))
-                        .with_started_at(started_at)
-                        .with_working_dir(Some(working_dir.clone().into())),
+                    let mut session = AgentSession::new(
+                        SessionId::new_unchecked(session_id),
+                        AgentType::Claude,
+                        status,
                     );
+                    session.session_name = Some(project_name.clone());
+                    session.started_at = started_at;
+                    session.working_dir = Some(working_dir.clone().into());
+                    sessions.push(session);
                 }
             }
         }

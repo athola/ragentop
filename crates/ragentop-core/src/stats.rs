@@ -1,7 +1,7 @@
 //! Dashboard aggregate statistics.
 //!
 //! Pure data structures for rich aggregate statistics displayed on the
-//! monitoring dashboard. Inspired by cc-top's dashboard stats.
+//! monitoring dashboard.
 
 use crate::types::UsdMicros;
 use serde::{Deserialize, Serialize};
@@ -57,7 +57,7 @@ impl Default for DashboardStats {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct ModelStats {
-    /// Model identifier (e.g., "claude-sonnet-4-5-20250929").
+    /// Model identifier (e.g., "claude-sonnet-4-6").
     pub model: String,
     /// Total cost attributed to this model.
     pub total_cost: UsdMicros,
@@ -131,11 +131,11 @@ mod tests {
     #[test]
     fn model_stats_construction() {
         let ms = ModelStats {
-            model: "claude-opus-4-6".to_string(),
+            model: "claude-opus-4-7".to_string(),
             total_cost: UsdMicros::from_dollars(12.50),
             total_tokens: 500_000,
         };
-        assert_eq!(ms.model, "claude-opus-4-6");
+        assert_eq!(ms.model, "claude-opus-4-7");
         assert_eq!(ms.total_cost, UsdMicros::from_dollars(12.50));
         assert_eq!(ms.total_tokens, 500_000);
     }
@@ -160,7 +160,7 @@ mod tests {
             ..DashboardStats::default()
         };
         stats.model_breakdown.push(ModelStats {
-            model: "claude-opus-4-6".to_string(),
+            model: "claude-opus-4-7".to_string(),
             total_cost: UsdMicros::from_dollars(5.0),
             total_tokens: 100_000,
         });

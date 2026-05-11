@@ -38,12 +38,12 @@ pub fn detect_sessions(config_dir: &Path) -> Result<Vec<AgentSession>> {
             };
             let started_at = history_file.metadata().ok().and_then(|m| m.modified().ok());
 
-            sessions.push(
-                AgentSession::new(SessionId::new_unchecked(id), AgentType::Gemini, status)
-                    .with_model(Some("gemini-2.0-flash".to_string()))
-                    .with_working_dir(Some(session_dir))
-                    .with_started_at(started_at),
-            );
+            let mut session =
+                AgentSession::new(SessionId::new_unchecked(id), AgentType::Gemini, status);
+            session.model = Some("gemini-2.0-flash".to_string());
+            session.working_dir = Some(session_dir);
+            session.started_at = started_at;
+            sessions.push(session);
         }
     }
     Ok(sessions)

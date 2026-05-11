@@ -1,8 +1,7 @@
 //! Command normalization for loop detection.
 //!
 //! Pure functions that normalize test runner commands into canonical families,
-//! enabling detection of repeated command patterns. Inspired by cc-top's
-//! command normalization for loop detection.
+//! enabling detection of repeated command patterns.
 
 /// Command families for normalization.
 ///

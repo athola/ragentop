@@ -47,13 +47,14 @@ pub fn detect_sessions(config_dir: &Path) -> Result<Vec<AgentSession>> {
     };
     let started_at = config_file.metadata().ok().and_then(|m| m.modified().ok());
 
-    Ok(vec![AgentSession::new(
+    let mut session = AgentSession::new(
         SessionId::new_unchecked(session_id),
         AgentType::Copilot,
         status,
-    )
-    .with_model(Some("gpt-4".to_string()))
-    .with_started_at(started_at)])
+    );
+    session.model = Some("gpt-4".to_string());
+    session.started_at = started_at;
+    Ok(vec![session])
 }
 
 #[cfg(test)]
