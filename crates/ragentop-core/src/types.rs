@@ -21,8 +21,10 @@ use std::time::{Duration, SystemTime};
 /// over/underflow handling explicit at every call site.
 ///
 /// **Wire format:** Serializes as an `f64` dollar value (e.g. `0.15`) for
-/// backward compatibility and human readability. Deserialization clamps
-/// NaN, negative, and non-finite inputs to [`Self::ZERO`].
+/// backward compatibility and human readability. Deserialization rejects
+/// NaN and infinities (returns a serde error) and clamps negative inputs
+/// to [`Self::ZERO`]. Non-finite values signal a bug or corrupted source,
+/// so erroring is preferred over silent ZERO substitution.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
 pub struct UsdMicros(u64);
 
@@ -118,6 +120,16 @@ impl Serialize for UsdMicros {
 impl<'de> Deserialize<'de> for UsdMicros {
     fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
         let dollars = f64::deserialize(d)?;
+        if dollars.is_nan() {
+            return Err(serde::de::Error::custom(
+                "UsdMicros cannot be deserialized from NaN",
+            ));
+        }
+        if dollars.is_infinite() {
+            return Err(serde::de::Error::custom(
+                "UsdMicros cannot be deserialized from infinity",
+            ));
+        }
         Ok(Self::from_dollars(dollars))
     }
 }
@@ -652,6 +664,45 @@ mod tests {
         let zero: UsdMicros = serde_json::from_str("0.0")?;
         assert_eq!(zero, UsdMicros::ZERO);
         Ok(())
+    }
+
+    #[test]
+    fn usd_micros_deserialize_errors_on_nan() {
+        use serde::de::IntoDeserializer;
+        let de: serde::de::value::F64Deserializer<serde::de::value::Error> =
+            f64::NAN.into_deserializer();
+        assert!(UsdMicros::deserialize(de).is_err());
+    }
+
+    #[test]
+    fn usd_micros_deserialize_errors_on_infinity() {
+        use serde::de::IntoDeserializer;
+        let de: serde::de::value::F64Deserializer<serde::de::value::Error> =
+            f64::INFINITY.into_deserializer();
+        assert!(UsdMicros::deserialize(de).is_err());
+    }
+
+    #[test]
+    fn usd_micros_deserialize_errors_on_neg_infinity() {
+        use serde::de::IntoDeserializer;
+        let de: serde::de::value::F64Deserializer<serde::de::value::Error> =
+            f64::NEG_INFINITY.into_deserializer();
+        assert!(UsdMicros::deserialize(de).is_err());
+    }
+
+    #[test]
+    fn usd_micros_from_dollars_f64_max_saturates() {
+        // f64::MAX * PER_USD overflows to INFINITY; clamp must pin to
+        // u64::MAX micros, not wrap or panic.
+        let m = UsdMicros::from_dollars(f64::MAX);
+        assert_eq!(m.as_micros(), u64::MAX);
+    }
+
+    #[test]
+    fn usd_micros_from_dollars_huge_finite_saturates() {
+        // 1e20 dollars > u64::MAX micros (~1.84e19); must saturate.
+        let m = UsdMicros::from_dollars(1e20);
+        assert_eq!(m.as_micros(), u64::MAX);
     }
 
     #[test]
