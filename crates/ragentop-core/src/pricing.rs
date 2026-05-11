@@ -23,6 +23,45 @@ pub struct ModelPricing {
     pub cache_creation_per_million: f64,
 }
 
+impl ModelPricing {
+    /// Validate that all per-million rates are finite and non-negative.
+    ///
+    /// Call this once at config-load. `compute_cost` itself does not
+    /// re-validate (hot path), and `UsdMicros::from_dollars` silently
+    /// clamps NaN / negative / infinity to ZERO -- which would cause the
+    /// cost ledger to read $0 while burnrate stays green and alerts never
+    /// fire. Validating up-front turns "silent zero" into a fast-fail at
+    /// startup, before any pricing input reaches the hot path.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error string identifying the first invalid field.
+    pub fn validate(&self) -> Result<(), String> {
+        Self::check_field("input_per_million", self.input_per_million)?;
+        Self::check_field("output_per_million", self.output_per_million)?;
+        Self::check_field("cache_read_per_million", self.cache_read_per_million)?;
+        Self::check_field(
+            "cache_creation_per_million",
+            self.cache_creation_per_million,
+        )?;
+        Ok(())
+    }
+
+    fn check_field(name: &str, value: f64) -> Result<(), String> {
+        if !value.is_finite() {
+            return Err(format!(
+                "ModelPricing.{name} must be finite (not NaN or infinity), got {value}"
+            ));
+        }
+        if value < 0.0 {
+            return Err(format!(
+                "ModelPricing.{name} must be non-negative, got {value}"
+            ));
+        }
+        Ok(())
+    }
+}
+
 /// Model context window limits in tokens.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[non_exhaustive]
@@ -226,6 +265,102 @@ mod tests {
             total = total.saturating_add(one_call);
         }
         assert_eq!(total.as_micros(), 18_000_000);
+    }
+
+    // -- ModelPricing::validate --
+
+    #[test]
+    fn validate_default_pricing_ok() {
+        for (name, pricing) in default_pricing() {
+            assert!(
+                pricing.validate().is_ok(),
+                "default pricing for {name} should validate"
+            );
+        }
+    }
+
+    #[test]
+    fn validate_rejects_nan_input() {
+        let pricing = ModelPricing {
+            input_per_million: f64::NAN,
+            output_per_million: 15.0,
+            cache_read_per_million: 0.3,
+            cache_creation_per_million: 3.75,
+        };
+        let result = pricing.validate();
+        assert!(
+            result
+                .as_ref()
+                .err()
+                .is_some_and(|e| e.contains("input_per_million") && e.contains("finite")),
+            "expected error mentioning input_per_million and finite, got: {result:?}"
+        );
+    }
+
+    #[test]
+    fn validate_rejects_infinite_output() {
+        let pricing = ModelPricing {
+            input_per_million: 3.0,
+            output_per_million: f64::INFINITY,
+            cache_read_per_million: 0.3,
+            cache_creation_per_million: 3.75,
+        };
+        let result = pricing.validate();
+        assert!(
+            result
+                .as_ref()
+                .err()
+                .is_some_and(|e| e.contains("output_per_million")),
+            "expected error mentioning output_per_million, got: {result:?}"
+        );
+    }
+
+    #[test]
+    fn validate_rejects_negative_cache_read() {
+        let pricing = ModelPricing {
+            input_per_million: 3.0,
+            output_per_million: 15.0,
+            cache_read_per_million: -0.5,
+            cache_creation_per_million: 3.75,
+        };
+        let result = pricing.validate();
+        assert!(
+            result
+                .as_ref()
+                .err()
+                .is_some_and(|e| e.contains("cache_read_per_million") && e.contains("non-negative")),
+            "expected error mentioning cache_read_per_million and non-negative, got: {result:?}"
+        );
+    }
+
+    #[test]
+    fn validate_rejects_negative_cache_creation() {
+        let pricing = ModelPricing {
+            input_per_million: 3.0,
+            output_per_million: 15.0,
+            cache_read_per_million: 0.3,
+            cache_creation_per_million: -1.0,
+        };
+        let result = pricing.validate();
+        assert!(
+            result
+                .as_ref()
+                .err()
+                .is_some_and(|e| e.contains("cache_creation_per_million")),
+            "expected error mentioning cache_creation_per_million, got: {result:?}"
+        );
+    }
+
+    #[test]
+    fn validate_zero_pricing_ok() {
+        // Free tiers / experimental models legitimately price at zero.
+        let pricing = ModelPricing {
+            input_per_million: 0.0,
+            output_per_million: 0.0,
+            cache_read_per_million: 0.0,
+            cache_creation_per_million: 0.0,
+        };
+        assert!(pricing.validate().is_ok());
     }
 
     // -- default_context_limits --
