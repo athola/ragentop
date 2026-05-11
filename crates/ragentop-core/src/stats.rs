@@ -3,6 +3,7 @@
 //! Pure data structures for rich aggregate statistics displayed on the
 //! monitoring dashboard. Inspired by cc-top's dashboard stats.
 
+use crate::types::UsdMicros;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -58,8 +59,8 @@ impl Default for DashboardStats {
 pub struct ModelStats {
     /// Model identifier (e.g., "claude-sonnet-4-5-20250929").
     pub model: String,
-    /// Total cost attributed to this model (USD).
-    pub total_cost: f64,
+    /// Total cost attributed to this model.
+    pub total_cost: UsdMicros,
     /// Total tokens consumed by this model.
     pub total_tokens: u64,
 }
@@ -131,11 +132,11 @@ mod tests {
     fn model_stats_construction() {
         let ms = ModelStats {
             model: "claude-opus-4-6".to_string(),
-            total_cost: 12.50,
+            total_cost: UsdMicros::from_dollars(12.50),
             total_tokens: 500_000,
         };
         assert_eq!(ms.model, "claude-opus-4-6");
-        assert!((ms.total_cost - 12.50).abs() < f64::EPSILON);
+        assert_eq!(ms.total_cost, UsdMicros::from_dollars(12.50));
         assert_eq!(ms.total_tokens, 500_000);
     }
 
@@ -160,7 +161,7 @@ mod tests {
         };
         stats.model_breakdown.push(ModelStats {
             model: "claude-opus-4-6".to_string(),
-            total_cost: 5.0,
+            total_cost: UsdMicros::from_dollars(5.0),
             total_tokens: 100_000,
         });
         stats.top_tools.push(ToolUsage {
@@ -192,7 +193,7 @@ mod tests {
     fn model_stats_serde_roundtrip() -> Result<(), Box<dyn std::error::Error>> {
         let ms = ModelStats {
             model: "test-model".to_string(),
-            total_cost: 1.23,
+            total_cost: UsdMicros::from_dollars(1.23),
             total_tokens: 456,
         };
         let json = serde_json::to_string(&ms)?;

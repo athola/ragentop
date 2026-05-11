@@ -3,6 +3,7 @@
 //! Pure data and functions for per-model token pricing and cost calculation.
 //! Based on cc-top's pricing defaults (2025 pricing).
 
+use crate::types::UsdMicros;
 use serde::{Deserialize, Serialize};
 
 /// Per-million-token pricing for a model.
@@ -66,6 +67,8 @@ pub fn default_pricing() -> Vec<(&'static str, ModelPricing)> {
 /// Compute cost from token counts and pricing.
 ///
 /// All token counts are absolute values; pricing is per-million tokens.
+/// Returns [`UsdMicros`] so callers accumulate exact micro-dollar totals
+/// rather than drifting f64 sums.
 ///
 /// # Examples
 /// ```
@@ -74,7 +77,7 @@ pub fn default_pricing() -> Vec<(&'static str, ModelPricing)> {
 /// let pricing_list = default_pricing();
 /// let (_, pricing) = &pricing_list[0]; // sonnet
 /// let cost = compute_cost(1_000_000, 1_000_000, 0, 0, pricing);
-/// assert!((cost - 18.00).abs() < 0.001);
+/// assert!((cost.as_f64() - 18.00).abs() < 0.001);
 /// ```
 #[must_use]
 #[allow(clippy::cast_precision_loss)]
@@ -84,14 +87,14 @@ pub fn compute_cost(
     cache_read_tokens: u64,
     cache_creation_tokens: u64,
     pricing: &ModelPricing,
-) -> f64 {
+) -> UsdMicros {
     let scale = 1_000_000.0_f64;
     let input_cost = (input_tokens as f64 / scale) * pricing.input_per_million;
     let output_cost = (output_tokens as f64 / scale) * pricing.output_per_million;
     let cache_read_cost = (cache_read_tokens as f64 / scale) * pricing.cache_read_per_million;
     let cache_creation_cost =
         (cache_creation_tokens as f64 / scale) * pricing.cache_creation_per_million;
-    input_cost + output_cost + cache_read_cost + cache_creation_cost
+    UsdMicros::from_dollars(input_cost + output_cost + cache_read_cost + cache_creation_cost)
 }
 
 /// Returns default context window limits for known Claude models.
@@ -136,7 +139,7 @@ mod tests {
             cache_creation_per_million: 3.75,
         };
         let cost = compute_cost(0, 0, 0, 0, &pricing);
-        assert!((cost).abs() < f64::EPSILON);
+        assert_eq!(cost, UsdMicros::ZERO);
     }
 
     #[test]
@@ -149,7 +152,7 @@ mod tests {
         };
         // 1M input + 1M output = $3 + $15 = $18
         let cost = compute_cost(1_000_000, 1_000_000, 0, 0, &pricing);
-        assert!((cost - 18.00).abs() < 0.001);
+        assert!((cost.as_f64() - 18.00).abs() < 0.001);
     }
 
     #[test]
@@ -162,7 +165,7 @@ mod tests {
         };
         // 1M cache_read + 1M cache_creation = $0.30 + $3.75 = $4.05
         let cost = compute_cost(0, 0, 1_000_000, 1_000_000, &pricing);
-        assert!((cost - 4.05).abs() < 0.001);
+        assert!((cost.as_f64() - 4.05).abs() < 0.001);
     }
 
     #[test]
@@ -175,7 +178,7 @@ mod tests {
         };
         // 500_000 input = $5, 500_000 output = $5 -> $10 total
         let cost = compute_cost(500_000, 500_000, 0, 0, &pricing);
-        assert!((cost - 10.00).abs() < 0.001);
+        assert!((cost.as_f64() - 10.00).abs() < 0.001);
     }
 
     #[test]
@@ -189,7 +192,27 @@ mod tests {
         // 100k each: input=$0.50, output=$2.50, cache_read=$0.05, cache_creation=$0.625
         let cost = compute_cost(100_000, 100_000, 100_000, 100_000, &pricing);
         let expected = 0.50 + 2.50 + 0.05 + 0.625;
-        assert!((cost - expected).abs() < 0.001);
+        assert!((cost.as_f64() - expected).abs() < 0.001);
+    }
+
+    #[test]
+    fn compute_cost_accumulates_exactly_across_many_calls() {
+        let pricing = ModelPricing {
+            input_per_million: 3.00,
+            output_per_million: 15.00,
+            cache_read_per_million: 0.30,
+            cache_creation_per_million: 3.75,
+        };
+        // 1,000 calls each costing $0.018 (6k input @ $3/M). With f64,
+        // 1000 * 0.018 drifts (0.018 has no exact binary representation);
+        // with UsdMicros it accumulates to exactly $18.000000.
+        let one_call = compute_cost(6_000, 0, 0, 0, &pricing);
+        assert_eq!(one_call.as_micros(), 18_000);
+        let mut total = UsdMicros::ZERO;
+        for _ in 0..1_000 {
+            total = total.saturating_add(one_call);
+        }
+        assert_eq!(total.as_micros(), 18_000_000);
     }
 
     // -- default_context_limits --

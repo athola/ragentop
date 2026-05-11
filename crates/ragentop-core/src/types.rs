@@ -1,8 +1,126 @@
 //! Core domain types - pure data structures.
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::path::PathBuf;
 use std::time::{Duration, SystemTime};
+
+/// A non-negative USD amount with microcurrency precision.
+///
+/// `1 UsdMicros` = `$0.000001`. Stored as `u64`, so the representable range
+/// is `$0` through `$18,446,744,073,709.55`. Sign-free by construction:
+/// money cannot go negative, so refunds (if ever needed) would be modeled
+/// as separate events rather than negative balances.
+///
+/// **Why not `f64`?** Accumulating session cost over thousands of API calls
+/// drifts under IEEE-754 binary fractions (0.10 + 0.20 != 0.30). `UsdMicros`
+/// performs exact integer arithmetic on micro-dollars and only converts to
+/// `f64` at display/serde boundaries.
+///
+/// **Arithmetic:** Use [`Self::saturating_add`] / [`Self::saturating_sub`].
+/// The type intentionally does NOT implement `+` / `-` operators to keep
+/// over/underflow handling explicit at every call site.
+///
+/// **Wire format:** Serializes as an `f64` dollar value (e.g. `0.15`) for
+/// backward compatibility and human readability. Deserialization clamps
+/// NaN, negative, and non-finite inputs to [`Self::ZERO`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+pub struct UsdMicros(u64);
+
+impl UsdMicros {
+    /// `$0.000000`.
+    pub const ZERO: Self = Self(0);
+
+    /// Number of micros in one US dollar.
+    pub const PER_USD: u64 = 1_000_000;
+
+    /// Constructs from a raw micros count (1 = $0.000001).
+    #[must_use]
+    pub const fn from_micros(m: u64) -> Self {
+        Self(m)
+    }
+
+    /// Constructs from whole dollars (e.g. `from_usd(5)` = $5.00).
+    ///
+    /// Saturates at `Self::MAX` if `d * PER_USD` overflows `u64`.
+    #[must_use]
+    pub const fn from_usd(d: u64) -> Self {
+        Self(d.saturating_mul(Self::PER_USD))
+    }
+
+    /// Constructs from an f64 dollar amount.
+    ///
+    /// Clamps NaN, negative, and non-finite values to [`Self::ZERO`].
+    /// Use only at boundaries (config TOML, wire format, legacy callers);
+    /// prefer [`Self::from_micros`] / [`Self::from_usd`] internally.
+    #[must_use]
+    #[allow(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        clippy::cast_precision_loss,
+        reason = "value is clamped to [0, u64::MAX as f64] before u64 cast; \
+                  Self::PER_USD (1_000_000) and u64::MAX as f64 are clamp \
+                  bounds, not arithmetic operands requiring exact precision"
+    )]
+    pub fn from_dollars(d: f64) -> Self {
+        if !d.is_finite() || d <= 0.0 {
+            return Self::ZERO;
+        }
+        let micros = (d * Self::PER_USD as f64).clamp(0.0, u64::MAX as f64);
+        Self(micros as u64)
+    }
+
+    /// Returns the raw micros count.
+    #[must_use]
+    pub const fn as_micros(self) -> u64 {
+        self.0
+    }
+
+    /// Converts to f64 dollars for display and wire format.
+    ///
+    /// Exact for amounts below `2^53` micros (~$9 billion); above that
+    /// the conversion is lossy.
+    #[must_use]
+    #[allow(
+        clippy::cast_precision_loss,
+        reason = "documented loss above 2^53 micros (~$9B)"
+    )]
+    pub fn as_f64(self) -> f64 {
+        (self.0 as f64) / (Self::PER_USD as f64)
+    }
+
+    /// Saturating addition.
+    #[must_use]
+    pub const fn saturating_add(self, other: Self) -> Self {
+        Self(self.0.saturating_add(other.0))
+    }
+
+    /// Saturating subtraction (clamps at zero).
+    #[must_use]
+    pub const fn saturating_sub(self, other: Self) -> Self {
+        Self(self.0.saturating_sub(other.0))
+    }
+}
+
+impl std::fmt::Display for UsdMicros {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let dollars = self.0 / Self::PER_USD;
+        let fract = self.0 % Self::PER_USD;
+        write!(f, "${dollars}.{fract:06}")
+    }
+}
+
+impl Serialize for UsdMicros {
+    fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        self.as_f64().serialize(s)
+    }
+}
+
+impl<'de> Deserialize<'de> for UsdMicros {
+    fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        let dollars = f64::deserialize(d)?;
+        Ok(Self::from_dollars(dollars))
+    }
+}
 
 /// Supported AI coding agent types.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -301,9 +419,12 @@ pub struct SessionMetrics {
     pub token_count: u64,
     /// Cost in US dollars, if available from the agent.
     ///
-    /// Valid range: non-negative finite values (>= 0.0).
-    /// NaN, infinity, and negative values are invalid.
-    pub cost_usd: Option<f64>,
+    /// Stored as [`UsdMicros`] (microcurrency, u64) to avoid f64 drift on
+    /// accumulation. The wire format remains an f64 dollar value for
+    /// human-readability and backward compatibility. Construct via
+    /// [`UsdMicros::from_dollars`] from f64 inputs, or [`UsdMicros::from_micros`]
+    /// when the source already speaks micros.
+    pub cost_usd: Option<UsdMicros>,
     /// CPU usage percentage, if measurable.
     ///
     /// Valid range: 0.0 to 100.0 (inclusive), finite.
@@ -369,9 +490,9 @@ impl SessionMetrics {
                 None
             } else if v < 0.0 {
                 issues.push(MetricsValidationIssue::NegativeCost(v));
-                Some(0.0)
+                Some(UsdMicros::ZERO)
             } else {
-                Some(v)
+                Some(UsdMicros::from_dollars(v))
             }
         });
 
@@ -405,27 +526,19 @@ impl SessionMetrics {
     /// Validates metrics and returns any issues found.
     ///
     /// Does not modify the metrics. Use [`Self::sanitize`] to fix issues.
+    ///
+    /// Note: `cost_usd` is no longer checked because [`UsdMicros`] is sign-
+    /// free and finite by construction. Only [`cpu_percent`](Self::cpu_percent)
+    /// can carry invalid state once a `SessionMetrics` exists.
     #[must_use]
     pub fn validate(&self) -> Vec<MetricsValidationIssue> {
         let mut issues = Vec::new();
-
-        if let Some(cost) = self.cost_usd {
-            if !cost.is_finite() {
-                issues.push(MetricsValidationIssue::InvalidCost(cost));
-            } else if cost < 0.0 {
-                issues.push(MetricsValidationIssue::NegativeCost(cost));
-            } else {
-                // Valid cost - no issue
-            }
-        }
 
         if let Some(cpu) = self.cpu_percent {
             if !cpu.is_finite() {
                 issues.push(MetricsValidationIssue::InvalidCpu(cpu));
             } else if !(0.0..=100.0).contains(&cpu) {
                 issues.push(MetricsValidationIssue::CpuOutOfRange(cpu));
-            } else {
-                // Valid CPU - no issue
             }
         }
 
@@ -440,15 +553,20 @@ impl SessionMetrics {
 
     /// Returns a sanitized copy with invalid values fixed.
     ///
-    /// - NaN/Infinity cost -> None
-    /// - Negative cost -> 0.0
     /// - NaN/Infinity CPU -> None
     /// - Out-of-range CPU -> clamped to [0, 100]
+    ///
+    /// `cost_usd` and `token_count` are already invariant-preserving by type,
+    /// so they pass through unchanged.
     #[must_use]
     pub fn sanitize(&self) -> Self {
+        // Reuse the CPU sanitization in Self::new by feeding a guaranteed-valid
+        // f64 cost (the type already guarantees the cost is finite & non-negative,
+        // so the round-trip through `Self::new` reports no cost issues).
+        let cost_dollars = self.cost_usd.map(UsdMicros::as_f64);
         let (mut sanitized, _) = Self::new(
             self.token_count,
-            self.cost_usd,
+            cost_dollars,
             self.cpu_percent,
             self.duration,
             self.command_count,
@@ -497,6 +615,95 @@ pub enum HistoryDepth {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // -- UsdMicros --
+
+    #[test]
+    fn usd_micros_zero_is_zero() {
+        assert_eq!(UsdMicros::ZERO.as_micros(), 0);
+        assert!((UsdMicros::ZERO.as_f64() - 0.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn usd_micros_from_dollars_roundtrip_within_precision() {
+        let m = UsdMicros::from_dollars(0.15);
+        assert_eq!(m.as_micros(), 150_000);
+        assert!((m.as_f64() - 0.15).abs() < 1e-9);
+    }
+
+    #[test]
+    fn usd_micros_from_dollars_clamps_negative_to_zero() {
+        assert_eq!(UsdMicros::from_dollars(-5.0), UsdMicros::ZERO);
+        assert_eq!(UsdMicros::from_dollars(-0.0001), UsdMicros::ZERO);
+    }
+
+    #[test]
+    fn usd_micros_from_dollars_clamps_nan_and_infinity_to_zero() {
+        assert_eq!(UsdMicros::from_dollars(f64::NAN), UsdMicros::ZERO);
+        assert_eq!(UsdMicros::from_dollars(f64::INFINITY), UsdMicros::ZERO);
+        assert_eq!(UsdMicros::from_dollars(f64::NEG_INFINITY), UsdMicros::ZERO);
+    }
+
+    #[test]
+    fn usd_micros_saturating_add_does_not_overflow() {
+        let near_max = UsdMicros::from_micros(u64::MAX - 10);
+        let plus = UsdMicros::from_micros(100);
+        assert_eq!(near_max.saturating_add(plus).as_micros(), u64::MAX);
+    }
+
+    #[test]
+    fn usd_micros_saturating_sub_clamps_at_zero() {
+        let small = UsdMicros::from_dollars(0.10);
+        let big = UsdMicros::from_dollars(1.00);
+        assert_eq!(small.saturating_sub(big), UsdMicros::ZERO);
+    }
+
+    #[test]
+    fn usd_micros_accumulates_exactly_across_thousands_of_calls() {
+        // The bug we are preventing: 10_000 * $0.10 should be exactly $1000.
+        let increment = UsdMicros::from_dollars(0.10);
+        let mut total = UsdMicros::ZERO;
+        for _ in 0..10_000 {
+            total = total.saturating_add(increment);
+        }
+        assert_eq!(total.as_micros(), 1_000_000_000); // $1000.000000
+        assert!((total.as_f64() - 1000.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn usd_micros_display_pads_to_six_digits() {
+        assert_eq!(UsdMicros::from_micros(150_000).to_string(), "$0.150000");
+        assert_eq!(UsdMicros::from_micros(1).to_string(), "$0.000001");
+        assert_eq!(UsdMicros::from_usd(5).to_string(), "$5.000000");
+    }
+
+    #[test]
+    fn usd_micros_serde_uses_f64_dollars_format() -> Result<(), Box<dyn std::error::Error>> {
+        // Wire-format backward-compatibility: ten cents -> 0.1, not 100000.
+        let m = UsdMicros::from_dollars(0.10);
+        let json = serde_json::to_string(&m)?;
+        assert_eq!(json, "0.1");
+        let parsed: UsdMicros = serde_json::from_str("0.1")?;
+        assert_eq!(parsed, m);
+        Ok(())
+    }
+
+    #[test]
+    fn usd_micros_deserialize_clamps_invalid_inputs() -> Result<(), Box<dyn std::error::Error>> {
+        let negative: UsdMicros = serde_json::from_str("-1.0")?;
+        assert_eq!(negative, UsdMicros::ZERO);
+        let zero: UsdMicros = serde_json::from_str("0.0")?;
+        assert_eq!(zero, UsdMicros::ZERO);
+        Ok(())
+    }
+
+    #[test]
+    fn usd_micros_ordering() {
+        assert!(UsdMicros::from_dollars(0.5) < UsdMicros::from_dollars(1.0));
+        assert!(UsdMicros::from_dollars(2.0) > UsdMicros::from_dollars(1.0));
+    }
+
+    // -- AgentType --
 
     #[test]
     fn test_agent_type_display() {
@@ -571,7 +778,7 @@ mod tests {
             42,
         );
         assert!(issues.is_empty());
-        assert_eq!(metrics.cost_usd, Some(0.15));
+        assert_eq!(metrics.cost_usd, Some(UsdMicros::from_dollars(0.15)));
         assert_eq!(metrics.cpu_percent, Some(25.5));
         assert!(metrics.is_valid());
     }
@@ -581,8 +788,8 @@ mod tests {
         let (metrics, issues) = SessionMetrics::new(0, Some(-5.0), None, None, 0);
         assert_eq!(issues.len(), 1);
         assert!(matches!(issues[0], MetricsValidationIssue::NegativeCost(_)));
-        // Negative cost is clamped to 0
-        assert_eq!(metrics.cost_usd, Some(0.0));
+        // Negative cost is clamped to ZERO
+        assert_eq!(metrics.cost_usd, Some(UsdMicros::ZERO));
     }
 
     #[test]
@@ -628,10 +835,12 @@ mod tests {
     }
 
     #[test]
-    fn test_session_metrics_validate() {
+    fn test_session_metrics_validate_cpu_only() {
+        // cost_usd cannot be invalid post-construction (UsdMicros is sign-free
+        // and finite by type). Only cpu_percent can carry invalid state.
         let metrics = SessionMetrics {
             token_count: 0,
-            cost_usd: Some(-1.0),
+            cost_usd: Some(UsdMicros::from_dollars(1.0)),
             cpu_percent: Some(200.0),
             duration: None,
             command_count: 0,
@@ -640,15 +849,21 @@ mod tests {
             cache_hit_rate: None,
         };
         let issues = metrics.validate();
-        assert_eq!(issues.len(), 2);
+        assert_eq!(issues.len(), 1);
         assert!(!metrics.is_valid());
+        assert!(matches!(
+            issues[0],
+            MetricsValidationIssue::CpuOutOfRange(_)
+        ));
     }
 
     #[test]
-    fn test_session_metrics_sanitize() {
+    fn test_session_metrics_sanitize_passes_through_cost_clamps_cpu() {
+        // cost_usd is already UsdMicros (invariant-safe), so sanitize is a
+        // pass-through for cost. Out-of-range cpu gets clamped to [0,100].
         let metrics = SessionMetrics {
             token_count: 100,
-            cost_usd: Some(-1.0),
+            cost_usd: Some(UsdMicros::from_dollars(2.50)),
             cpu_percent: Some(150.0),
             duration: Some(Duration::from_secs(30)),
             command_count: 5,
@@ -657,7 +872,7 @@ mod tests {
             cache_hit_rate: Some(0.75),
         };
         let sanitized = metrics.sanitize();
-        assert_eq!(sanitized.cost_usd, Some(0.0));
+        assert_eq!(sanitized.cost_usd, Some(UsdMicros::from_dollars(2.50)));
         assert_eq!(sanitized.cpu_percent, Some(100.0));
         assert!(sanitized.is_valid());
         // Other fields preserved
@@ -673,7 +888,7 @@ mod tests {
         // Zero cost is valid
         let (metrics, issues) = SessionMetrics::new(0, Some(0.0), Some(0.0), None, 0);
         assert!(issues.is_empty());
-        assert_eq!(metrics.cost_usd, Some(0.0));
+        assert_eq!(metrics.cost_usd, Some(UsdMicros::ZERO));
         assert_eq!(metrics.cpu_percent, Some(0.0));
 
         // 100% CPU is valid

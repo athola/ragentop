@@ -33,7 +33,9 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
                     format!(
                         "Tokens: {} | Cost: ${:.2} | Commands: {}",
                         metrics.token_count,
-                        metrics.cost_usd.unwrap_or(0.0),
+                        metrics
+                            .cost_usd
+                            .map_or(0.0, ragentop_core::UsdMicros::as_f64),
                         metrics.command_count
                     )
                 },

@@ -155,7 +155,7 @@ mod tests {
             session_id: SessionId::new_unchecked("sess-1"),
             metrics: SessionMetrics {
                 token_count: 5000,
-                cost_usd: Some(0.15),
+                cost_usd: Some(crate::UsdMicros::from_dollars(0.15)),
                 cpu_percent: Some(25.5),
                 duration: Some(std::time::Duration::from_secs(120)),
                 command_count: 42,

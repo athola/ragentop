@@ -3,15 +3,20 @@
 //! Pure functions for computing cost trends, rate classification, and
 //! token velocity. Inspired by cc-top's burn-rate monitoring.
 
+use crate::types::UsdMicros;
 use serde::{Deserialize, Serialize};
 
 /// Snapshot of cost burn-rate for an agent session.
+///
+/// Cumulative costs use [`UsdMicros`] to avoid f64 drift across thousands
+/// of polls; rates (e.g. `hourly_rate`) stay as f64 because they are
+/// derived per-poll from a fresh sum and don't accumulate.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct BurnRate {
-    /// Total accumulated cost in USD.
-    pub total_cost: f64,
-    /// Current hourly rate in USD/hour.
+    /// Total accumulated cost.
+    pub total_cost: UsdMicros,
+    /// Current hourly rate in USD/hour (derived, may drift but is recomputed each poll).
     pub hourly_rate: f64,
     /// Direction the rate is moving.
     pub trend: TrendDirection,
@@ -33,8 +38,8 @@ pub struct ModelBurnRate {
     pub model: String,
     /// Hourly rate for this model (USD/hour).
     pub hourly_rate: f64,
-    /// Total cost attributed to this model (USD).
-    pub total_cost: f64,
+    /// Total cost attributed to this model.
+    pub total_cost: UsdMicros,
 }
 
 /// Direction a metric is trending over time.
@@ -321,14 +326,14 @@ mod tests {
     #[test]
     fn burn_rate_serde_roundtrip() -> Result<(), Box<dyn std::error::Error>> {
         let rate = BurnRate {
-            total_cost: 1.23,
+            total_cost: UsdMicros::from_dollars(1.23),
             hourly_rate: 0.45,
             trend: TrendDirection::Up,
             token_velocity: 150.0,
             per_model: vec![ModelBurnRate {
                 model: "claude-opus-4-6".to_string(),
                 hourly_rate: 0.45,
-                total_cost: 1.23,
+                total_cost: UsdMicros::from_dollars(1.23),
             }],
             daily_projection: compute_daily_projection(0.45),
             monthly_projection: compute_monthly_projection(0.45),
@@ -395,7 +400,7 @@ mod tests {
         let mbr = ModelBurnRate {
             model: "claude-opus-4-6".to_string(),
             hourly_rate: 1.5,
-            total_cost: 10.0,
+            total_cost: UsdMicros::from_dollars(10.0),
         };
         let json = serde_json::to_string(&mbr)?;
         let parsed: ModelBurnRate = serde_json::from_str(&json)?;
@@ -406,7 +411,7 @@ mod tests {
     #[test]
     fn burn_rate_with_multiple_models() {
         let rate = BurnRate {
-            total_cost: 5.0,
+            total_cost: UsdMicros::from_dollars(5.0),
             hourly_rate: 1.0,
             trend: TrendDirection::Flat,
             token_velocity: 100.0,
@@ -414,12 +419,12 @@ mod tests {
                 ModelBurnRate {
                     model: "claude-opus-4-6".to_string(),
                     hourly_rate: 0.7,
-                    total_cost: 3.5,
+                    total_cost: UsdMicros::from_dollars(3.5),
                 },
                 ModelBurnRate {
                     model: "claude-haiku-4-5-20251001".to_string(),
                     hourly_rate: 0.3,
-                    total_cost: 1.5,
+                    total_cost: UsdMicros::from_dollars(1.5),
                 },
             ],
             daily_projection: compute_daily_projection(1.0),

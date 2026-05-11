@@ -161,7 +161,10 @@ fn test_metrics_pipeline() -> Result<(), Box<dyn std::error::Error>> {
     let metrics = adapter.poll_metrics(&SessionId::new_unchecked("sess-m1"))?;
 
     assert_eq!(metrics.token_count, 1500);
-    assert_eq!(metrics.cost_usd, Some(0.05));
+    assert_eq!(
+        metrics.cost_usd,
+        Some(ragentop_core::UsdMicros::from_dollars(0.05))
+    );
     assert!(metrics.is_valid());
 
     // Protocol round-trip for metrics response
