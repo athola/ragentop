@@ -4,7 +4,7 @@ use std::time::{Duration, SystemTime};
 use sysinfo::{ProcessRefreshKind, RefreshKind, System};
 
 /// Threshold for considering an agent "active" based on file modification time.
-pub const ACTIVE_THRESHOLD: Duration = Duration::from_secs(300);
+pub const ACTIVE_THRESHOLD: Duration = Duration::from_mins(5);
 
 /// Check if a process with the given name is currently running.
 ///

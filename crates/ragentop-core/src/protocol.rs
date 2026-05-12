@@ -157,7 +157,7 @@ mod tests {
                 token_count: 5000,
                 cost_usd: Some(crate::UsdMicros::from_dollars(0.15)),
                 cpu_percent: Some(25.5),
-                duration: Some(std::time::Duration::from_secs(120)),
+                duration: Some(std::time::Duration::from_mins(2)),
                 command_count: 42,
                 lines_added: 0,
                 lines_removed: 0,

@@ -222,7 +222,7 @@ impl Alert {
 /// let candidate = Alert::new(
 ///     AlertRule::CostSurge, Severity::Warning, "cost surge again", None, SystemTime::now(),
 /// );
-/// assert!(should_dedup(&existing, &candidate, Duration::from_secs(300)));
+/// assert!(should_dedup(&existing, &candidate, Duration::from_mins(5)));
 /// ```
 #[must_use]
 pub fn should_dedup(existing: &[Alert], candidate: &Alert, window: Duration) -> bool {
@@ -336,11 +336,7 @@ mod tests {
         let now = SystemTime::now();
         let existing = vec![make_alert(AlertRule::CostSurge, None, now)];
         let candidate = make_alert(AlertRule::CostSurge, None, now);
-        assert!(should_dedup(
-            &existing,
-            &candidate,
-            Duration::from_secs(300)
-        ));
+        assert!(should_dedup(&existing, &candidate, Duration::from_mins(5)));
     }
 
     #[test]
@@ -348,11 +344,7 @@ mod tests {
         let now = SystemTime::now();
         let existing = vec![make_alert(AlertRule::CostSurge, None, now)];
         let candidate = make_alert(AlertRule::ErrorStorm, None, now);
-        assert!(!should_dedup(
-            &existing,
-            &candidate,
-            Duration::from_secs(300)
-        ));
+        assert!(!should_dedup(&existing, &candidate, Duration::from_mins(5)));
     }
 
     #[test]
@@ -362,11 +354,7 @@ mod tests {
         let sid2 = SessionId::new("s2")?;
         let existing = vec![make_alert(AlertRule::CostSurge, Some(sid1), now)];
         let candidate = make_alert(AlertRule::CostSurge, Some(sid2), now);
-        assert!(!should_dedup(
-            &existing,
-            &candidate,
-            Duration::from_secs(300)
-        ));
+        assert!(!should_dedup(&existing, &candidate, Duration::from_mins(5)));
         Ok(())
     }
 
@@ -376,17 +364,13 @@ mod tests {
         let now = SystemTime::now();
         let existing = vec![make_alert(AlertRule::CostSurge, None, past)];
         let candidate = make_alert(AlertRule::CostSurge, None, now);
-        assert!(!should_dedup(
-            &existing,
-            &candidate,
-            Duration::from_secs(300)
-        ));
+        assert!(!should_dedup(&existing, &candidate, Duration::from_mins(5)));
     }
 
     #[test]
     fn dedup_empty_existing_returns_false() {
         let candidate = make_alert(AlertRule::CostSurge, None, SystemTime::now());
-        assert!(!should_dedup(&[], &candidate, Duration::from_secs(300)));
+        assert!(!should_dedup(&[], &candidate, Duration::from_mins(5)));
     }
 
     #[test]
@@ -395,11 +379,7 @@ mod tests {
         let sid = SessionId::new("sess-1")?;
         let existing = vec![make_alert(AlertRule::LoopDetection, Some(sid.clone()), now)];
         let candidate = make_alert(AlertRule::LoopDetection, Some(sid), now);
-        assert!(should_dedup(
-            &existing,
-            &candidate,
-            Duration::from_secs(300)
-        ));
+        assert!(should_dedup(&existing, &candidate, Duration::from_mins(5)));
         Ok(())
     }
 
@@ -409,11 +389,7 @@ mod tests {
         let sid = SessionId::new("sess-1")?;
         let existing = vec![make_alert(AlertRule::CostSurge, None, now)];
         let candidate = make_alert(AlertRule::CostSurge, Some(sid), now);
-        assert!(!should_dedup(
-            &existing,
-            &candidate,
-            Duration::from_secs(300)
-        ));
+        assert!(!should_dedup(&existing, &candidate, Duration::from_mins(5)));
         Ok(())
     }
 

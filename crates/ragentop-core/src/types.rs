@@ -290,7 +290,7 @@ impl std::fmt::Display for ActivityStatus {
 /// 30 seconds: threshold between Active and Idle.
 const ACTIVE_THRESHOLD: Duration = Duration::from_secs(30);
 /// 5 minutes: threshold between Idle and Done.
-const IDLE_THRESHOLD: Duration = Duration::from_secs(300);
+const IDLE_THRESHOLD: Duration = Duration::from_mins(5);
 
 /// Classify activity based on elapsed time since last event.
 ///
@@ -782,7 +782,7 @@ mod tests {
             1000,
             Some(0.15),
             Some(25.5),
-            Some(Duration::from_secs(60)),
+            Some(Duration::from_mins(1)),
             42,
         );
         assert!(issues.is_empty());
@@ -1019,14 +1019,14 @@ mod tests {
     #[test]
     fn classify_activity_2_min_is_idle() {
         let now = SystemTime::now();
-        let last = now - Duration::from_secs(120);
+        let last = now - Duration::from_mins(2);
         assert_eq!(classify_activity(Some(last), now), ActivityStatus::Idle);
     }
 
     #[test]
     fn classify_activity_5_min_boundary_is_idle() {
         let now = SystemTime::now();
-        let last = now - Duration::from_secs(300);
+        let last = now - Duration::from_mins(5);
         assert_eq!(classify_activity(Some(last), now), ActivityStatus::Idle);
     }
 
@@ -1040,7 +1040,7 @@ mod tests {
     #[test]
     fn classify_activity_1_hour_is_done() {
         let now = SystemTime::now();
-        let last = now - Duration::from_secs(3600);
+        let last = now - Duration::from_hours(1);
         assert_eq!(classify_activity(Some(last), now), ActivityStatus::Done);
     }
 
