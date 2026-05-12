@@ -87,16 +87,12 @@ fn test_update_sessions_adjusts_index() {
 
     // Reduce to 3 sessions - index should adjust
     let sessions: Vec<AgentSession> = (0..3)
-        .map(|i| AgentSession {
-            id: SessionId::new_unchecked(format!("s{i}")),
-            agent_type: AgentType::Claude,
-            model: None,
-            session_name: None,
-            working_dir: None,
-            pane_id: None,
-            pid: None,
-            started_at: None,
-            status: SessionStatus::Active,
+        .map(|i| {
+            AgentSession::new(
+                SessionId::new_unchecked(format!("s{i}")),
+                AgentType::Claude,
+                SessionStatus::Active,
+            )
         })
         .collect();
 

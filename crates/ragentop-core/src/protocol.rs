@@ -79,6 +79,8 @@ mod tests {
             pid: Some(12345),
             started_at: Some(SystemTime::now()),
             status: SessionStatus::Active,
+            last_event_at: None,
+            telemetry_status: crate::TelemetryStatus::default(),
         }
     }
 
@@ -153,10 +155,13 @@ mod tests {
             session_id: SessionId::new_unchecked("sess-1"),
             metrics: SessionMetrics {
                 token_count: 5000,
-                cost_usd: Some(0.15),
+                cost_usd: Some(crate::UsdMicros::from_dollars(0.15)),
                 cpu_percent: Some(25.5),
-                duration: Some(std::time::Duration::from_secs(120)),
+                duration: Some(std::time::Duration::from_mins(2)),
                 command_count: 42,
+                lines_added: 0,
+                lines_removed: 0,
+                cache_hit_rate: None,
             },
         };
         let json = serde_json::to_string(&resp)?;

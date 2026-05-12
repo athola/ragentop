@@ -1,6 +1,7 @@
 //! Main dashboard layout component.
 
 use leptos::prelude::*;
+use ragentop_core::UsdMicros;
 
 use super::session_detail::{SessionDetail, SessionDetails};
 use super::session_list::{SessionItem, SessionList};
@@ -42,7 +43,7 @@ pub fn Dashboard() -> impl IntoView {
                     status: s.status,
                     working_dir: s.working_dir,
                     token_count: 15000,
-                    cost_usd: Some(0.045),
+                    cost_usd: Some(UsdMicros::from_dollars(0.045)),
                     command_count: 42,
                 })
         })

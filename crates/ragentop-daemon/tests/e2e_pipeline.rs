@@ -38,13 +38,14 @@ impl Adapter for MockClaudeAdapter {
     }
 
     fn poll_metrics(&self, _session_id: &SessionId) -> ragentop_core::Result<SessionMetrics> {
-        Ok(SessionMetrics {
-            token_count: 1500,
-            cost_usd: Some(0.05),
-            cpu_percent: Some(12.0),
-            duration: Some(std::time::Duration::from_secs(90)),
-            command_count: 7,
-        })
+        Ok(SessionMetrics::new(
+            1500,
+            Some(0.05),
+            Some(12.0),
+            Some(std::time::Duration::from_secs(90)),
+            7,
+        )
+        .0)
     }
 
     fn get_command_history(
@@ -81,17 +82,18 @@ impl Adapter for MockClaudeAdapter {
 }
 
 fn make_session(id: &str) -> AgentSession {
-    AgentSession {
-        id: SessionId::new_unchecked(id),
-        agent_type: AgentType::Claude,
-        model: Some("opus-4".to_string()),
-        session_name: Some("test-project".to_string()),
-        working_dir: Some(PathBuf::from("/home/user/project")),
-        pane_id: Some("%1".to_string()),
-        pid: Some(12345),
-        started_at: Some(SystemTime::now()),
-        status: SessionStatus::Active,
-    }
+    let mut session = AgentSession::new(
+        SessionId::new_unchecked(id),
+        AgentType::Claude,
+        SessionStatus::Active,
+    );
+    session.model = Some("opus-4".to_string());
+    session.session_name = Some("test-project".to_string());
+    session.working_dir = Some(PathBuf::from("/home/user/project"));
+    session.pane_id = Some("%1".to_string());
+    session.pid = Some(12345);
+    session.started_at = Some(SystemTime::now());
+    session
 }
 
 /// Full pipeline: adapter detects → tracker collects → store persists → protocol queries.
@@ -122,7 +124,7 @@ fn test_full_pipeline_adapter_to_protocol() -> Result<(), Box<dyn std::error::Er
     )?;
     assert_eq!(commands.len(), 2);
 
-    let node = StateNode::new(commands, None);
+    let node = StateNode::new(commands, None, SystemTime::now());
     let hash = store.store(&node)?;
 
     let loaded = store.load(&hash)?.ok_or("node should exist")?;
@@ -160,7 +162,10 @@ fn test_metrics_pipeline() -> Result<(), Box<dyn std::error::Error>> {
     let metrics = adapter.poll_metrics(&SessionId::new_unchecked("sess-m1"))?;
 
     assert_eq!(metrics.token_count, 1500);
-    assert_eq!(metrics.cost_usd, Some(0.05));
+    assert_eq!(
+        metrics.cost_usd,
+        Some(ragentop_core::UsdMicros::from_dollars(0.05))
+    );
     assert!(metrics.is_valid());
 
     // Protocol round-trip for metrics response
@@ -198,13 +203,17 @@ fn test_dag_store_history_chain() -> Result<(), Box<dyn std::error::Error>> {
         result_summary: None,
     };
 
-    let root = StateNode::new(vec![cmd("Bash")], None);
+    let root = StateNode::new(vec![cmd("Bash")], None, SystemTime::now());
     let root_hash = store.store(&root)?;
 
-    let snap2 = StateNode::new(vec![cmd("Read"), cmd("Edit")], Some(root_hash));
+    let snap2 = StateNode::new(
+        vec![cmd("Read"), cmd("Edit")],
+        Some(root_hash),
+        SystemTime::now(),
+    );
     let snap2_hash = store.store(&snap2)?;
 
-    let snap3 = StateNode::new(vec![cmd("Write")], Some(snap2_hash));
+    let snap3 = StateNode::new(vec![cmd("Write")], Some(snap2_hash), SystemTime::now());
     let snap3_hash = store.store(&snap3)?;
 
     // Walk full history from latest

@@ -11,6 +11,7 @@ members = [
     "crates/adapters/adapter-gemini",
     "crates/adapters/adapter-copilot",
     "crates/adapters/adapter-qwen",
+    "crates/adapters/adapter-common",
 ]
 
 [workspace.package]
@@ -18,7 +19,7 @@ version = "0.1.0"
 edition = "2021"
 license = "MIT"
 repository = "https://github.com/alext/ragentop"
-rust-version = "1.75"
+rust-version = "1.91"
 
 [workspace.dependencies]
 # Core
@@ -48,6 +49,9 @@ leptos = { version = "0.8", features = ["ssr"] }
 
 # CLI
 clap = { version = "4.5", features = ["derive"] }
+
+# Process inspection
+sysinfo = "0.32"
 
 # Testing
 rstest = "0.23"

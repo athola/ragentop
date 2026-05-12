@@ -21,15 +21,23 @@ pub struct StateNode {
 }
 
 impl StateNode {
-    /// Creates a new state node with the given commands and parent.
+    /// Creates a new state node with the given commands, parent, and timestamp.
+    ///
+    /// The caller must provide the timestamp explicitly to keep the core pure
+    /// (no I/O or side effects). Typically pass `SystemTime::now()` from the
+    /// imperative shell layer.
     #[must_use]
     #[inline]
-    pub fn new(commands: Vec<Command>, parent: Option<super::Hash>) -> Self {
+    pub const fn new(
+        commands: Vec<Command>,
+        parent: Option<super::Hash>,
+        timestamp: SystemTime,
+    ) -> Self {
         Self {
             commands,
             metadata: None,
             parent,
-            timestamp: SystemTime::now(),
+            timestamp,
         }
     }
 }
@@ -51,7 +59,7 @@ mod tests {
 
     #[test]
     fn test_state_node_new_without_parent() {
-        let node = StateNode::new(vec![], None);
+        let node = StateNode::new(vec![], None, SystemTime::now());
         assert!(node.commands.is_empty());
         assert!(node.parent.is_none());
         assert!(node.metadata.is_none());
@@ -60,7 +68,7 @@ mod tests {
     #[test]
     fn test_state_node_new_with_commands() {
         let cmds = vec![make_command("read"), make_command("write")];
-        let node = StateNode::new(cmds, None);
+        let node = StateNode::new(cmds, None, SystemTime::now());
         assert_eq!(node.commands.len(), 2);
         assert_eq!(node.commands[0].tool, "read");
         assert_eq!(node.commands[1].tool, "write");
@@ -69,23 +77,20 @@ mod tests {
     #[test]
     fn test_state_node_new_with_parent() {
         let parent_hash = super::super::Hash("abc123".to_string());
-        let node = StateNode::new(vec![], Some(parent_hash.clone()));
+        let node = StateNode::new(vec![], Some(parent_hash.clone()), SystemTime::now());
         assert_eq!(node.parent, Some(parent_hash));
     }
 
     #[test]
-    fn test_state_node_timestamp_is_recent() {
-        let before = SystemTime::now();
-        let node = StateNode::new(vec![], None);
-        let after = SystemTime::now();
-
-        assert!(node.timestamp >= before);
-        assert!(node.timestamp <= after);
+    fn test_state_node_timestamp_is_exact() {
+        let ts = SystemTime::now();
+        let node = StateNode::new(vec![], None, ts);
+        assert_eq!(node.timestamp, ts);
     }
 
     #[test]
     fn test_state_node_serde_roundtrip() -> Result<(), Box<dyn std::error::Error>> {
-        let node = StateNode::new(vec![make_command("test")], None);
+        let node = StateNode::new(vec![make_command("test")], None, SystemTime::now());
         let json = serde_json::to_string(&node)?;
         let parsed: StateNode = serde_json::from_str(&json)?;
 
@@ -97,7 +102,7 @@ mod tests {
 
     #[test]
     fn test_state_node_with_metadata() -> Result<(), Box<dyn std::error::Error>> {
-        let mut node = StateNode::new(vec![], None);
+        let mut node = StateNode::new(vec![], None, SystemTime::now());
         node.metadata = Some(serde_json::json!({"key": "value", "count": 42}));
 
         let json = serde_json::to_string(&node)?;
@@ -111,7 +116,7 @@ mod tests {
 
     #[test]
     fn test_state_node_clone() {
-        let node = StateNode::new(vec![make_command("clone_test")], None);
+        let node = StateNode::new(vec![make_command("clone_test")], None, SystemTime::now());
         let cloned = node.clone();
 
         assert_eq!(cloned.commands.len(), node.commands.len());

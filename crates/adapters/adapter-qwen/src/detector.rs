@@ -1,28 +1,9 @@
 //! Session detection for Qwen CLI.
 
+use adapter_common::{is_process_running, is_recently_modified, ACTIVE_THRESHOLD};
 use ragentop_core::{AgentSession, AgentType, Result, SessionId, SessionStatus};
 use serde::Deserialize;
 use std::path::Path;
-use std::time::{Duration, SystemTime};
-use sysinfo::{ProcessRefreshKind, RefreshKind, System};
-
-const ACTIVE_THRESHOLD: Duration = Duration::from_secs(300);
-
-fn is_process_running(name: &str) -> bool {
-    let s =
-        System::new_with_specifics(RefreshKind::new().with_processes(ProcessRefreshKind::new()));
-    s.processes()
-        .values()
-        .any(|p| p.name().to_string_lossy().contains(name))
-}
-
-fn is_recently_modified(path: &Path, threshold: Duration) -> bool {
-    path.metadata()
-        .and_then(|m| m.modified())
-        .ok()
-        .and_then(|t| SystemTime::now().duration_since(t).ok())
-        .is_some_and(|age| age < threshold)
-}
 
 #[derive(Deserialize)]
 struct QwenLogEntry {
@@ -47,39 +28,56 @@ pub fn detect_sessions(config_dir: &Path) -> Result<Vec<AgentSession>> {
     for entry in std::fs::read_dir(&logs_dir)? {
         let entry = entry?;
         let path = entry.path();
-        if path.extension().is_some_and(|e| e == "json") {
-            let recently_modified = is_recently_modified(&path, ACTIVE_THRESHOLD);
-
-            if let Ok(contents) = std::fs::read_to_string(&path) {
-                if let Ok(data) = serde_json::from_str::<QwenLogEntry>(&contents) {
-                    let id = data.session_id.unwrap_or_else(|| {
-                        path.file_stem()
-                            .map(|s| s.to_string_lossy().to_string())
-                            .unwrap_or_default()
-                    });
-                    if seen_ids.insert(id.clone()) {
-                        let status = if process_active || recently_modified {
-                            SessionStatus::Active
-                        } else {
-                            SessionStatus::Idle
-                        };
-                        let started_at = path.metadata().ok().and_then(|m| m.modified().ok());
-
-                        sessions.push(AgentSession {
-                            id: SessionId::new_unchecked(id),
-                            agent_type: AgentType::Qwen,
-                            model: data.model.or_else(|| Some("qwen-coder".to_string())),
-                            session_name: None,
-                            working_dir: None,
-                            pane_id: None,
-                            pid: None,
-                            started_at,
-                            status,
-                        });
-                    }
-                }
-            }
+        let Some(ext) = path.extension() else {
+            continue;
+        };
+        if ext != "json" {
+            continue;
         }
+        let recently_modified = is_recently_modified(&path, ACTIVE_THRESHOLD);
+
+        let contents = match std::fs::read_to_string(&path) {
+            Ok(c) => c,
+            Err(e) => {
+                tracing::warn!(
+                    path = %path.display(),
+                    error = %e,
+                    "skipping unreadable qwen log file"
+                );
+                continue;
+            }
+        };
+        let data = match serde_json::from_str::<QwenLogEntry>(&contents) {
+            Ok(d) => d,
+            Err(e) => {
+                tracing::warn!(
+                    path = %path.display(),
+                    error = %e,
+                    "skipping malformed qwen log file"
+                );
+                continue;
+            }
+        };
+
+        let id = data.session_id.unwrap_or_else(|| {
+            path.file_stem()
+                .map(|s| s.to_string_lossy().to_string())
+                .unwrap_or_default()
+        });
+        if !seen_ids.insert(id.clone()) {
+            continue;
+        }
+        let status = if process_active || recently_modified {
+            SessionStatus::Active
+        } else {
+            SessionStatus::Idle
+        };
+        let started_at = path.metadata().ok().and_then(|m| m.modified().ok());
+
+        let mut session = AgentSession::new(SessionId::new_unchecked(id), AgentType::Qwen, status);
+        session.model = data.model.or_else(|| Some("qwen-coder".to_string()));
+        session.started_at = started_at;
+        sessions.push(session);
     }
     Ok(sessions)
 }

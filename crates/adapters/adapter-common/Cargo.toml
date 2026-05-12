@@ -1,0 +1,19 @@
+[package]
+name = "adapter-common"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Shared utilities for ragentop agent adapters"
+readme = "README.md"
+keywords = ["agent", "monitoring", "ai"]
+categories = ["development-tools"]
+
+[dependencies]
+sysinfo = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+
+[lints]
+workspace = true

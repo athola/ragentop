@@ -78,18 +78,40 @@ pub fn aggregate_metrics(config_dir: &Path) -> Result<SessionMetrics> {
     for dir_entry in std::fs::read_dir(&logs_dir)? {
         let dir_entry = dir_entry?;
         let file_path = dir_entry.path();
-        if file_path.extension().is_some_and(|ext| ext == "json") {
-            if let Ok(contents) = std::fs::read_to_string(&file_path) {
-                if let Ok(log_file) = serde_json::from_str::<QwenLogFile>(&contents) {
-                    if let Some(usage) = &log_file.usage {
-                        total_tokens += usage.total_tokens;
-                    }
-                    if let Some(req) = &log_file.request {
-                        if let Some(tools) = &req.tool_calls {
-                            command_count += tools.len() as u64;
-                        }
-                    }
-                }
+        let Some(ext) = file_path.extension() else {
+            continue;
+        };
+        if ext != "json" {
+            continue;
+        }
+        let contents = match std::fs::read_to_string(&file_path) {
+            Ok(c) => c,
+            Err(e) => {
+                tracing::warn!(
+                    path = %file_path.display(),
+                    error = %e,
+                    "skipping unreadable qwen log file during metric aggregation"
+                );
+                continue;
+            }
+        };
+        let log_file = match serde_json::from_str::<QwenLogFile>(&contents) {
+            Ok(lf) => lf,
+            Err(e) => {
+                tracing::warn!(
+                    path = %file_path.display(),
+                    error = %e,
+                    "skipping malformed qwen log file during metric aggregation"
+                );
+                continue;
+            }
+        };
+        if let Some(usage) = &log_file.usage {
+            total_tokens += usage.total_tokens;
+        }
+        if let Some(req) = &log_file.request {
+            if let Some(tools) = &req.tool_calls {
+                command_count += tools.len() as u64;
             }
         }
     }
@@ -133,50 +155,70 @@ pub fn parse_history(config_dir: &Path, limit: usize) -> Result<Vec<Command>> {
             break;
         }
         let file_path = dir_entry.path();
-        if let Ok(contents) = std::fs::read_to_string(&file_path) {
-            if let Ok(log_file) = serde_json::from_str::<QwenLogFile>(&contents) {
-                let timestamp = log_file.timestamp.map_or_else(
-                    || {
-                        file_path
-                            .metadata()
-                            .and_then(|meta| meta.modified())
-                            .unwrap_or_else(|_| SystemTime::now())
-                    },
-                    |ts_val| SystemTime::UNIX_EPOCH + Duration::from_secs_f64(ts_val),
+        let contents = match std::fs::read_to_string(&file_path) {
+            Ok(c) => c,
+            Err(e) => {
+                tracing::warn!(
+                    path = %file_path.display(),
+                    error = %e,
+                    "skipping unreadable qwen log file during history parse"
                 );
-
-                if let Some(req) = &log_file.request {
-                    if let Some(tool_calls) = &req.tool_calls {
-                        for tool_call in tool_calls {
-                            if commands.len() >= limit {
-                                break;
-                            }
-                            let tool = tool_call
-                                .function
-                                .as_ref()
-                                .and_then(|func| func.name.clone())
-                                .unwrap_or_else(|| {
-                                    tool_call
-                                        .call_type
-                                        .clone()
-                                        .unwrap_or_else(|| "unknown".to_owned())
-                                });
-                            let args = tool_call
-                                .function
-                                .as_ref()
-                                .and_then(|func| func.arguments.clone())
-                                .unwrap_or_default();
-                            commands.push(Command {
-                                args,
-                                result_summary: None,
-                                status: CommandStatus::Success,
-                                timestamp,
-                                tool,
-                            });
-                        }
-                    }
-                }
+                continue;
             }
+        };
+        let log_file = match serde_json::from_str::<QwenLogFile>(&contents) {
+            Ok(lf) => lf,
+            Err(e) => {
+                tracing::warn!(
+                    path = %file_path.display(),
+                    error = %e,
+                    "skipping malformed qwen log file during history parse"
+                );
+                continue;
+            }
+        };
+        let timestamp = log_file.timestamp.map_or_else(
+            || {
+                file_path
+                    .metadata()
+                    .and_then(|meta| meta.modified())
+                    .unwrap_or_else(|_| SystemTime::now())
+            },
+            |ts_val| SystemTime::UNIX_EPOCH + Duration::from_secs_f64(ts_val),
+        );
+
+        let Some(req) = &log_file.request else {
+            continue;
+        };
+        let Some(tool_calls) = &req.tool_calls else {
+            continue;
+        };
+        for tool_call in tool_calls {
+            if commands.len() >= limit {
+                break;
+            }
+            let tool = tool_call
+                .function
+                .as_ref()
+                .and_then(|func| func.name.clone())
+                .unwrap_or_else(|| {
+                    tool_call
+                        .call_type
+                        .clone()
+                        .unwrap_or_else(|| "unknown".to_owned())
+                });
+            let args = tool_call
+                .function
+                .as_ref()
+                .and_then(|func| func.arguments.clone())
+                .unwrap_or_default();
+            commands.push(Command {
+                args,
+                result_summary: None,
+                status: CommandStatus::Success,
+                timestamp,
+                tool,
+            });
         }
     }
     Ok(commands)

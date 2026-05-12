@@ -1,29 +1,11 @@
 //! Session detection for Google Gemini CLI.
 
+use adapter_common::{is_process_running, is_recently_modified, ACTIVE_THRESHOLD};
 use ragentop_core::{
     AgentSession, AgentType, Command, CommandStatus, Result, SessionId, SessionStatus,
 };
 use std::path::Path;
-use std::time::{Duration, SystemTime};
-use sysinfo::{ProcessRefreshKind, RefreshKind, System};
-
-const ACTIVE_THRESHOLD: Duration = Duration::from_secs(300);
-
-fn is_process_running(name: &str) -> bool {
-    let s =
-        System::new_with_specifics(RefreshKind::new().with_processes(ProcessRefreshKind::new()));
-    s.processes()
-        .values()
-        .any(|p| p.name().to_string_lossy().contains(name))
-}
-
-fn is_recently_modified(path: &Path, threshold: Duration) -> bool {
-    path.metadata()
-        .and_then(|m| m.modified())
-        .ok()
-        .and_then(|t| SystemTime::now().duration_since(t).ok())
-        .is_some_and(|age| age < threshold)
-}
+use std::time::SystemTime;
 
 /// Detects Gemini sessions in the given config directory.
 ///
@@ -56,17 +38,12 @@ pub fn detect_sessions(config_dir: &Path) -> Result<Vec<AgentSession>> {
             };
             let started_at = history_file.metadata().ok().and_then(|m| m.modified().ok());
 
-            sessions.push(AgentSession {
-                id: SessionId::new_unchecked(id),
-                agent_type: AgentType::Gemini,
-                model: Some("gemini-2.0-flash".to_string()),
-                session_name: None,
-                working_dir: Some(session_dir),
-                pane_id: None,
-                pid: None,
-                started_at,
-                status,
-            });
+            let mut session =
+                AgentSession::new(SessionId::new_unchecked(id), AgentType::Gemini, status);
+            session.model = Some("gemini-2.0-flash".to_string());
+            session.working_dir = Some(session_dir);
+            session.started_at = started_at;
+            sessions.push(session);
         }
     }
     Ok(sessions)

@@ -1,28 +1,9 @@
 //! Session detection for GitHub Copilot CLI.
 
+use adapter_common::{is_process_running, is_recently_modified, ACTIVE_THRESHOLD};
 use ragentop_core::{AgentSession, AgentType, Result, SessionId, SessionStatus};
 use serde::Deserialize;
 use std::path::Path;
-use std::time::{Duration, SystemTime};
-use sysinfo::{ProcessRefreshKind, RefreshKind, System};
-
-const ACTIVE_THRESHOLD: Duration = Duration::from_secs(300);
-
-fn is_process_running(name: &str) -> bool {
-    let s =
-        System::new_with_specifics(RefreshKind::new().with_processes(ProcessRefreshKind::new()));
-    s.processes()
-        .values()
-        .any(|p| p.name().to_string_lossy().contains(name))
-}
-
-fn is_recently_modified(path: &Path, threshold: Duration) -> bool {
-    path.metadata()
-        .and_then(|m| m.modified())
-        .ok()
-        .and_then(|t| SystemTime::now().duration_since(t).ok())
-        .is_some_and(|age| age < threshold)
-}
 
 #[derive(Deserialize)]
 struct CopilotConfig {
@@ -44,29 +25,36 @@ pub fn detect_sessions(config_dir: &Path) -> Result<Vec<AgentSession>> {
     let recently_modified = is_recently_modified(&config_file, ACTIVE_THRESHOLD);
 
     let contents = std::fs::read_to_string(&config_file)?;
-    if let Ok(config) = serde_json::from_str::<CopilotConfig>(&contents) {
-        if let Some(session_id) = config.session_id {
-            let status = if process_active || recently_modified {
-                SessionStatus::Active
-            } else {
-                SessionStatus::Idle
-            };
-            let started_at = config_file.metadata().ok().and_then(|m| m.modified().ok());
-
-            return Ok(vec![AgentSession {
-                id: SessionId::new_unchecked(session_id),
-                agent_type: AgentType::Copilot,
-                model: Some("gpt-4".to_string()),
-                session_name: None,
-                working_dir: None,
-                pane_id: None,
-                pid: None,
-                started_at,
-                status,
-            }]);
+    let config = match serde_json::from_str::<CopilotConfig>(&contents) {
+        Ok(c) => c,
+        Err(e) => {
+            tracing::warn!(
+                path = %config_file.display(),
+                error = %e,
+                "skipping malformed copilot config.json"
+            );
+            return Ok(vec![]);
         }
-    }
-    Ok(vec![])
+    };
+    let Some(session_id) = config.session_id else {
+        return Ok(vec![]);
+    };
+
+    let status = if process_active || recently_modified {
+        SessionStatus::Active
+    } else {
+        SessionStatus::Idle
+    };
+    let started_at = config_file.metadata().ok().and_then(|m| m.modified().ok());
+
+    let mut session = AgentSession::new(
+        SessionId::new_unchecked(session_id),
+        AgentType::Copilot,
+        status,
+    );
+    session.model = Some("gpt-4".to_string());
+    session.started_at = started_at;
+    Ok(vec![session])
 }
 
 #[cfg(test)]
@@ -123,22 +111,5 @@ mod tests {
         let sessions = detect_sessions(&copilot_dir)?;
         assert!(sessions.is_empty());
         Ok(())
-    }
-
-    #[test]
-    fn test_is_recently_modified_true() -> std::result::Result<(), Box<dyn std::error::Error>> {
-        let dir = tempdir()?;
-        let file = dir.path().join("recent");
-        fs::write(&file, "data")?;
-        assert!(is_recently_modified(&file, Duration::from_secs(60)));
-        Ok(())
-    }
-
-    #[test]
-    fn test_is_recently_modified_nonexistent() {
-        assert!(!is_recently_modified(
-            Path::new("/nonexistent"),
-            Duration::from_secs(60)
-        ));
     }
 }

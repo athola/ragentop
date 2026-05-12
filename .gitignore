@@ -8,3 +8,6 @@ docs/plans/
 
 # Commit message file
 commit_msg.txt
+
+# Ephemeral review notes (consolidated into commits/issues)
+reviews/

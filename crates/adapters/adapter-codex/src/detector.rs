@@ -1,28 +1,12 @@
 //! Session detection for Codex CLI.
 
+use adapter_common::{is_process_running, is_recently_modified, ACTIVE_THRESHOLD};
 use ragentop_core::{
     AgentSession, AgentType, Command, CommandStatus, Result, SessionId, SessionStatus,
 };
 use serde::Deserialize;
 use std::path::Path;
 use std::time::{Duration, SystemTime};
-
-const ACTIVE_THRESHOLD: Duration = Duration::from_secs(300);
-
-fn is_process_running(name: &str) -> bool {
-    std::process::Command::new("pgrep")
-        .args(["-f", name])
-        .output()
-        .is_ok_and(|o| o.status.success())
-}
-
-fn is_recently_modified(path: &Path, threshold: Duration) -> bool {
-    path.metadata()
-        .and_then(|m| m.modified())
-        .ok()
-        .and_then(|t| SystemTime::now().duration_since(t).ok())
-        .is_some_and(|age| age < threshold)
-}
 
 #[derive(Deserialize)]
 struct CodexSession {
@@ -48,38 +32,55 @@ pub fn detect_sessions(config_dir: &Path) -> Result<Vec<AgentSession>> {
     for entry in std::fs::read_dir(&sessions_dir)? {
         let entry = entry?;
         let path = entry.path();
-        if path.extension().is_some_and(|e| e == "json") {
-            if let Ok(contents) = std::fs::read_to_string(&path) {
-                if let Ok(data) = serde_json::from_str::<CodexSession>(&contents) {
-                    let id = data.id.unwrap_or_else(|| {
-                        path.file_stem()
-                            .map(|s| s.to_string_lossy().to_string())
-                            .unwrap_or_default()
-                    });
-
-                    let recently_modified = is_recently_modified(&path, ACTIVE_THRESHOLD);
-                    let status = if process_active || recently_modified {
-                        SessionStatus::Active
-                    } else {
-                        SessionStatus::Idle
-                    };
-
-                    let started_at = path.metadata().ok().and_then(|m| m.modified().ok());
-
-                    sessions.push(AgentSession {
-                        id: SessionId::new_unchecked(id),
-                        agent_type: AgentType::Codex,
-                        model: data.model,
-                        session_name: None,
-                        working_dir: data.project_path.map(std::path::PathBuf::from),
-                        pane_id: None,
-                        pid: None,
-                        started_at,
-                        status,
-                    });
-                }
-            }
+        let Some(ext) = path.extension() else {
+            continue;
+        };
+        if ext != "json" {
+            continue;
         }
+        let contents = match std::fs::read_to_string(&path) {
+            Ok(c) => c,
+            Err(e) => {
+                tracing::warn!(
+                    path = %path.display(),
+                    error = %e,
+                    "skipping unreadable codex session file"
+                );
+                continue;
+            }
+        };
+        let data = match serde_json::from_str::<CodexSession>(&contents) {
+            Ok(d) => d,
+            Err(e) => {
+                tracing::warn!(
+                    path = %path.display(),
+                    error = %e,
+                    "skipping malformed codex session file"
+                );
+                continue;
+            }
+        };
+
+        let id = data.id.unwrap_or_else(|| {
+            path.file_stem()
+                .map(|s| s.to_string_lossy().to_string())
+                .unwrap_or_default()
+        });
+
+        let recently_modified = is_recently_modified(&path, ACTIVE_THRESHOLD);
+        let status = if process_active || recently_modified {
+            SessionStatus::Active
+        } else {
+            SessionStatus::Idle
+        };
+
+        let started_at = path.metadata().ok().and_then(|m| m.modified().ok());
+
+        let mut session = AgentSession::new(SessionId::new_unchecked(id), AgentType::Codex, status);
+        session.model = data.model;
+        session.working_dir = data.project_path.map(std::path::PathBuf::from);
+        session.started_at = started_at;
+        sessions.push(session);
     }
     Ok(sessions)
 }
@@ -122,29 +123,38 @@ pub fn parse_history(config_dir: &Path, limit: usize) -> Result<Vec<Command>> {
         if line.is_empty() {
             continue;
         }
-        if let Ok(entry) = serde_json::from_str::<HistoryEntry>(line) {
-            let tool = entry
-                .tool
-                .or(entry.command)
-                .unwrap_or_else(|| "unknown".to_string());
-            let args = entry.args.unwrap_or_default();
-            let status = match entry.status.as_deref() {
-                Some("failed" | "error") => CommandStatus::Failed,
-                Some("running") => CommandStatus::Running,
-                _ => CommandStatus::Success,
-            };
-            let timestamp = entry.timestamp.map_or_else(SystemTime::now, |ts| {
-                SystemTime::UNIX_EPOCH + Duration::from_secs_f64(ts)
-            });
+        let entry = match serde_json::from_str::<HistoryEntry>(line) {
+            Ok(e) => e,
+            Err(e) => {
+                tracing::warn!(
+                    file = %history_file.display(),
+                    error = %e,
+                    "skipping malformed codex history line"
+                );
+                continue;
+            }
+        };
+        let tool = entry
+            .tool
+            .or(entry.command)
+            .unwrap_or_else(|| "unknown".to_string());
+        let args = entry.args.unwrap_or_default();
+        let status = match entry.status.as_deref() {
+            Some("failed" | "error") => CommandStatus::Failed,
+            Some("running") => CommandStatus::Running,
+            _ => CommandStatus::Success,
+        };
+        let timestamp = entry.timestamp.map_or_else(SystemTime::now, |ts| {
+            SystemTime::UNIX_EPOCH + Duration::from_secs_f64(ts)
+        });
 
-            commands.push(Command {
-                timestamp,
-                tool,
-                args,
-                status,
-                result_summary: entry.result,
-            });
-        }
+        commands.push(Command {
+            timestamp,
+            tool,
+            args,
+            status,
+            result_summary: entry.result,
+        });
     }
     Ok(commands)
 }
@@ -288,22 +298,5 @@ mod tests {
         let cmds = parse_history(&codex_dir, 10)?;
         assert_eq!(cmds.len(), 1);
         Ok(())
-    }
-
-    #[test]
-    fn test_is_recently_modified_true() -> std::result::Result<(), Box<dyn std::error::Error>> {
-        let dir = tempdir()?;
-        let file = dir.path().join("recent");
-        fs::write(&file, "data")?;
-        assert!(is_recently_modified(&file, Duration::from_secs(60)));
-        Ok(())
-    }
-
-    #[test]
-    fn test_is_recently_modified_nonexistent() {
-        assert!(!is_recently_modified(
-            Path::new("/nonexistent/file"),
-            Duration::from_secs(60)
-        ));
     }
 }

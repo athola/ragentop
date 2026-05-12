@@ -95,7 +95,7 @@ mod tests {
                 .iter()
                 .map(|t| Command {
                     timestamp: SystemTime::UNIX_EPOCH,
-                    tool: t.to_string(),
+                    tool: (*t).to_string(),
                     args: String::new(),
                     status: CommandStatus::Success,
                     result_summary: None,
